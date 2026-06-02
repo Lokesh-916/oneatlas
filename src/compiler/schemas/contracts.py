@@ -617,6 +617,10 @@ class FinalOutput(BaseModel):
         default_factory=list,
         description="Integration hooks — one per unique (integration_id, action_id) pair. Referenced by workflow_stubs via hook_id.",
     )
+    app_spec: Optional[AppSpec] = Field(
+        default=None,
+        description="Unified AppSpec view assembled from all pipeline outputs. Additive — does not replace existing schema fields."
+    )
     mermaid_diagrams: MermaidDiagrams = Field(
         default_factory=MermaidDiagrams,
         description="Generated Mermaid diagrams.",
@@ -666,6 +670,75 @@ class IntegrationRef(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# AppSpec Types (Feature D)
+# ---------------------------------------------------------------------------
+
+class AppSpecMeta(BaseModel):
+    """High-level application metadata derived from intent extraction."""
+    app_name: str = Field(description="Application name derived from intent.")
+    app_type: str = Field(description="Application type, e.g. crm, ecommerce.")
+    description: str = Field(default="", description="Brief description from user prompt.")
+    features: List[str] = Field(default_factory=list, description="Features from IntentSchema.")
+    assumptions: List[str] = Field(default_factory=list, description="Assumptions from IntentSchema.")
+
+
+class AppSpecEntity(BaseModel):
+    """A domain entity with DB-level field listing. Assembled from architecture + db_schema."""
+    name: str = Field(description="Entity name from ArchitectureSchema.")
+    table_name: str = Field(description="Corresponding DB table name.")
+    fields: List[str] = Field(default_factory=list, description="Column names from DBSchema.")
+    relations: List[str] = Field(default_factory=list, description="FK relation descriptions.")
+
+
+class AppSpecPage(BaseModel):
+    """A UI page entry. Assembled from UISchema."""
+    path: str = Field(description="URL path from UISchema.")
+    title: str = Field(description="Page title from UISchema.")
+    role_required: Optional[str] = Field(default=None, description="Role gate from UISchema.")
+    bound_entity: Optional[str] = Field(default=None, description="Entity name matched from page path.")
+
+
+class AppSpecEndpoint(BaseModel):
+    """A condensed API endpoint entry. Assembled from APISchema."""
+    method: str = Field(description="HTTP method.")
+    path: str = Field(description="Endpoint path.")
+    auth_required: bool = Field(description="Whether auth is required.")
+    required_role: Optional[str] = Field(default=None, description="Role required if any.")
+
+
+class AppSpecAuthRules(BaseModel):
+    """Auth strategy and role list. Assembled from AuthSchema."""
+    auth_strategy: str = Field(description="JWT, session, or oauth2.")
+    roles: List[str] = Field(default_factory=list, description="All role names.")
+
+
+class AppSpec(BaseModel):
+    """
+    Unified application specification assembled from all validated pipeline outputs.
+    Acts as a high-level consolidated view for downstream code generators.
+    Does not duplicate data from db_schema / api_schema / ui_schema / auth_schema.
+    References integration_hooks and workflow_stubs by value (they are already
+    normalized and not duplicated elsewhere in FinalOutput).
+    """
+    meta: AppSpecMeta = Field(description="Application metadata.")
+    entities: List[AppSpecEntity] = Field(default_factory=list, description="Domain entities with DB fields.")
+    pages: List[AppSpecPage] = Field(default_factory=list, description="UI pages.")
+    api_endpoints: List[AppSpecEndpoint] = Field(default_factory=list, description="API endpoints.")
+    auth_rules: AppSpecAuthRules = Field(
+        default_factory=lambda: AppSpecAuthRules(auth_strategy="jwt", roles=[]),
+        description="Auth strategy and roles."
+    )
+    integration_hooks: List[IntegrationHook] = Field(
+        default_factory=list,
+        description="Integration hooks from Feature C. One per unique (integration_id, action_id)."
+    )
+    workflow_stubs: List[WorkflowStub] = Field(
+        default_factory=list,
+        description="Workflow stubs from Feature B. Linked to hooks via hook_id."
+    )
+
+
 # Integration Hook Types (Feature C)
 # ---------------------------------------------------------------------------
 

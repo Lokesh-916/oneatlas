@@ -436,6 +436,7 @@ class PipelineSession:
         self.runtime_report: Optional[dict] = None
         self.workflow_stubs: list = []
         self.integration_hooks: list = []
+        self.app_spec: Optional[dict] = None
         self.log_output: Optional[dict] = None
 
         # Metrics
@@ -1766,6 +1767,102 @@ async def run_pipeline(session: PipelineSession) -> None:
     )
 
     # ─────────────────────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
+    # STAGE D — Build unified AppSpec (pure Python assembly, zero LLM calls)
+    # ─────────────────────────────────────────────────────────────────────────
+    def _build_app_spec() -> Optional[dict]:
+        from compiler.schemas.contracts import (
+            AppSpec, AppSpecMeta, AppSpecEntity, AppSpecPage,
+            AppSpecEndpoint, AppSpecAuthRules
+        )
+        intent = session.intent or {}
+        app_type = intent.get("app_type", "custom") if isinstance(intent, dict) else getattr(intent, "app_type", "custom")
+        features = intent.get("features", []) if isinstance(intent, dict) else getattr(intent, "features", [])
+        assumptions = intent.get("assumptions", []) if isinstance(intent, dict) else getattr(intent, "assumptions", [])
+        meta = AppSpecMeta(
+            app_name=str(app_type).replace("_", " ").title(),
+            app_type=str(app_type),
+            description=session.prompt[:200],
+            features=features if isinstance(features, list) else [],
+            assumptions=assumptions if isinstance(assumptions, list) else [],
+        )
+        arch = session.architecture or {}
+        arch_entities_raw = arch.get("entities", []) if isinstance(arch, dict) else getattr(arch, "entities", [])
+        arch_entity_names = []
+        for e in arch_entities_raw:
+            n = e.get("name", "") if isinstance(e, dict) else getattr(e, "name", "")
+            if n:
+                arch_entity_names.append(n)
+        db = session.db_schema or {}
+        tables_raw = db.get("tables", []) if isinstance(db, dict) else getattr(db, "tables", [])
+        def _tbl(entity_name):
+            el = entity_name.lower().replace(" ", "_")
+            for t in tables_raw:
+                tn = t.get("name", "") if isinstance(t, dict) else getattr(t, "name", "")
+                if tn.lower() in (el, el + "s", el.rstrip("s")) or el in tn.lower() or tn.lower() in el:
+                    return t
+            return {}
+        entities = []
+        for name in arch_entity_names:
+            tbl = _tbl(name)
+            tname = tbl.get("name", name.lower() + "s") if isinstance(tbl, dict) else getattr(tbl, "name", name.lower() + "s")
+            cols = tbl.get("columns", []) if isinstance(tbl, dict) else getattr(tbl, "columns", [])
+            fields = [c.get("name", "") if isinstance(c, dict) else getattr(c, "name", "") for c in cols]
+            fields = [f for f in fields if f]
+            fks = tbl.get("foreign_keys", []) if isinstance(tbl, dict) else getattr(tbl, "foreign_keys", [])
+            rels = []
+            for fk in fks:
+                col = fk.get("column", "") if isinstance(fk, dict) else getattr(fk, "column", "")
+                ref = fk.get("references_table", "") if isinstance(fk, dict) else getattr(fk, "references_table", "")
+                if col and ref:
+                    rels.append(f"belongs to {ref} via {col}")
+            entities.append(AppSpecEntity(name=name, table_name=tname, fields=fields, relations=rels))
+        ui = session.ui_schema or {}
+        pages_raw = ui.get("pages", []) if isinstance(ui, dict) else getattr(ui, "pages", [])
+        pages = []
+        for p in pages_raw:
+            pth = p.get("path", "") if isinstance(p, dict) else getattr(p, "path", "")
+            ttl = p.get("title", "") if isinstance(p, dict) else getattr(p, "title", "")
+            role = p.get("role_required") if isinstance(p, dict) else getattr(p, "role_required", None)
+            bound = None
+            pl = pth.lower().replace("-", "_").replace("/", "_")
+            for en in arch_entity_names:
+                if en.lower().rstrip("s") in pl or en.lower() in pl:
+                    bound = en
+                    break
+            pages.append(AppSpecPage(path=pth, title=ttl, role_required=role, bound_entity=bound))
+        api = session.api_schema or {}
+        eps_raw = api.get("endpoints", []) if isinstance(api, dict) else getattr(api, "endpoints", [])
+        api_endpoints = []
+        for ep in eps_raw:
+            m = ep.get("method", "GET") if isinstance(ep, dict) else getattr(ep, "method", "GET")
+            pth = ep.get("path", "") if isinstance(ep, dict) else getattr(ep, "path", "")
+            ar = ep.get("auth_required", True) if isinstance(ep, dict) else getattr(ep, "auth_required", True)
+            rr = ep.get("required_role") if isinstance(ep, dict) else getattr(ep, "required_role", None)
+            if pth:
+                api_endpoints.append(AppSpecEndpoint(method=str(m), path=str(pth), auth_required=bool(ar), required_role=rr))
+        auth = session.auth_schema or {}
+        strat = auth.get("auth_strategy", "jwt") if isinstance(auth, dict) else getattr(auth, "auth_strategy", "jwt")
+        roles = auth.get("roles", []) if isinstance(auth, dict) else getattr(auth, "roles", [])
+        auth_rules = AppSpecAuthRules(auth_strategy=str(strat), roles=roles if isinstance(roles, list) else [])
+        try:
+            spec = AppSpec(
+                meta=meta, entities=entities, pages=pages,
+                api_endpoints=api_endpoints, auth_rules=auth_rules,
+                integration_hooks=session.integration_hooks or [],
+                workflow_stubs=session.workflow_stubs or [],
+            )
+            logger.info("[session:%s] AppSpec: %d entities, %d pages, %d endpoints, %d hooks, %d stubs.",
+                session.session_id, len(entities), len(pages), len(api_endpoints),
+                len(session.integration_hooks or []), len(session.workflow_stubs or []))
+            return spec.model_dump()
+        except Exception as e:
+            logger.error("[session:%s] AppSpec assembly error: %s", session.session_id, e)
+            return None
+
+    session.app_spec = _build_app_spec()
+
+
     # STAGE 8 — pipeline_complete SSE event
     # ─────────────────────────────────────────────────────────────────────────
     total_ms = session.elapsed_ms()
@@ -1791,6 +1888,7 @@ async def run_pipeline(session: PipelineSession) -> None:
         "runtime_report": session.runtime_report,
         "workflow_stubs": [s.model_dump() if hasattr(s, "model_dump") else s for s in (session.workflow_stubs or [])],
         "integration_hooks": [h.model_dump() if hasattr(h, "model_dump") else h for h in (session.integration_hooks or [])],
+        "app_spec": session.app_spec,
     }
 
     from compiler.schemas.contracts import FinalOutput
