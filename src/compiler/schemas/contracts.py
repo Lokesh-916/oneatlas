@@ -1,0 +1,757 @@
+"""
+ProtoFlow Pydantic Contracts
+All pipeline schemas are defined here with strict types.
+No bare dict or Any. Every field has a description.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
+
+# ---------------------------------------------------------------------------
+# Intent Schema
+# ---------------------------------------------------------------------------
+
+class IntentSchema(BaseModel):
+    """Output of the intent extraction stage."""
+
+    app_type: str = Field(
+        description="Category of application, e.g. 'CRM', 'e-commerce', 'project management'."
+    )
+    features: List[str] = Field(
+        default_factory=list,
+        description="List of feature names extracted from the prompt.",
+    )
+    entities: List[str] = Field(
+        default_factory=list,
+        description="List of domain entity names (e.g. 'User', 'Order', 'Product').",
+    )
+    user_roles: List[str] = Field(
+        default_factory=list,
+        description="List of user role names (e.g. 'admin', 'customer', 'manager').",
+    )
+    integrations: List[str] = Field(
+        default_factory=list,
+        description="Third-party integrations mentioned (e.g. 'Stripe', 'SendGrid').",
+    )
+    premium_requirements: Optional[str] = Field(
+        default=None,
+        description="Description of premium or paid features, if any.",
+    )
+    analytics_requirements: Optional[str] = Field(
+        default=None,
+        description="Description of analytics or reporting needs, if any.",
+    )
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for the parsed intent (0.0 to 1.0).",
+    )
+    assumptions: List[str] = Field(
+        default_factory=list,
+        description="Every assumption made during intent extraction.",
+    )
+    clarifications_received: List[str] = Field(
+        default_factory=list,
+        description="Answers received from the user during HITL clarification.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Architecture Schema
+# ---------------------------------------------------------------------------
+
+class EntitySchema(BaseModel):
+    """A domain entity in the architecture."""
+
+    name: str = Field(description="Entity name, e.g. 'User', 'Order'.")
+    attributes: List[str] = Field(
+        default_factory=list,
+        description="List of attribute names for this entity.",
+    )
+    description: str = Field(
+        default="",
+        description="Short description of what this entity represents.",
+    )
+
+
+class RelationSchema(BaseModel):
+    """A relationship between two entities."""
+
+    from_entity: str = Field(description="Source entity name.")
+    to_entity: str = Field(description="Target entity name.")
+    cardinality: str = Field(
+        description="Cardinality: 'one-to-one', 'one-to-many', or 'many-to-many'."
+    )
+    description: str = Field(
+        default="",
+        description="Description of the relationship.",
+    )
+
+
+class BusinessRuleSchema(BaseModel):
+    """A business rule or constraint."""
+
+    name: str = Field(description="Short name for the rule.")
+    description: str = Field(description="Full description of the rule.")
+    affected_entities: List[str] = Field(
+        default_factory=list,
+        description="Entity names affected by this rule.",
+    )
+
+
+class ArchitectureSchema(BaseModel):
+    """Output of the system architecture design stage."""
+
+    entities: List[EntitySchema] = Field(
+        default_factory=list,
+        description="All domain entities.",
+    )
+    relations: List[RelationSchema] = Field(
+        default_factory=list,
+        description="All entity relationships.",
+    )
+    page_flows: List[Dict] = Field(
+        default_factory=list,
+        description="Page navigation flows with entry points and transitions.",
+    )
+    role_hierarchy: Dict[str, Dict] = Field(
+        default_factory=dict,
+        description="Role inheritance and permission levels.",
+    )
+    business_rules: List[BusinessRuleSchema] = Field(
+        default_factory=list,
+        description="Business rules including premium gating and admin restrictions.",
+    )
+    data_flows: List[Dict] = Field(
+        default_factory=list,
+        description="Data flows between layers.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# DB Schema
+# ---------------------------------------------------------------------------
+
+class ColumnSchema(BaseModel):
+    """A single database column."""
+
+    name: str = Field(description="Column name.")
+    data_type: str = Field(description="SQL data type, e.g. 'UUID', 'VARCHAR(255)', 'BOOLEAN'.")
+    nullable: bool = Field(description="Whether the column allows NULL values.")
+    default_value: Optional[str] = Field(
+        default=None,
+        description="Default value expression, if any.",
+    )
+    constraints: List[str] = Field(
+        default_factory=list,
+        description="Constraints such as 'UNIQUE', 'NOT NULL', 'CHECK(...)'.",
+    )
+
+
+class ForeignKeySchema(BaseModel):
+    """A foreign key constraint."""
+
+    column: str = Field(description="Column name in this table.")
+    references_table: str = Field(description="Referenced table name.")
+    references_column: str = Field(description="Referenced column name.")
+    on_delete: str = Field(
+        default="CASCADE",
+        description="ON DELETE action: 'CASCADE', 'SET NULL', 'RESTRICT'.",
+    )
+
+
+class IndexSchema(BaseModel):
+    """A database index."""
+
+    name: str = Field(description="Index name.")
+    columns: List[str] = Field(description="Columns included in the index.")
+    unique: bool = Field(default=False, description="Whether this is a unique index.")
+
+
+class TableSchema(BaseModel):
+    """A database table."""
+
+    name: str = Field(description="Table name.")
+    columns: List[ColumnSchema] = Field(
+        default_factory=list,
+        description="All columns in this table.",
+    )
+    primary_key: str = Field(
+        default="id",
+        description="Primary key column name.",
+    )
+    foreign_keys: List[ForeignKeySchema] = Field(
+        default_factory=list,
+        description="Foreign key constraints.",
+    )
+    indexes: List[IndexSchema] = Field(
+        default_factory=list,
+        description="Indexes on this table.",
+    )
+    relations: List[Dict] = Field(
+        default_factory=list,
+        description="Logical relations to other tables (for documentation).",
+    )
+
+
+class DBSchema(BaseModel):
+    """Output of the database schema generation stage."""
+
+    tables: List[TableSchema] = Field(
+        default_factory=list,
+        description="All database tables.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# API Schema
+# ---------------------------------------------------------------------------
+
+class RequestSchema(BaseModel):
+    """Request body definition for an API endpoint."""
+
+    fields: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Field name -> data type mapping for the request body.",
+    )
+    required_fields: List[str] = Field(
+        default_factory=list,
+        description="List of required field names.",
+    )
+
+
+class ResponseSchema(BaseModel):
+    """Response body definition for an API endpoint."""
+
+    fields: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Field name -> data type mapping for the response body.",
+    )
+    is_list: bool = Field(
+        default=False,
+        description="Whether the response is a list of objects.",
+    )
+
+
+class EndpointSchema(BaseModel):
+    """A single REST API endpoint."""
+
+    method: str = Field(description="HTTP method: GET, POST, PUT, PATCH, DELETE.")
+    path: str = Field(description="URL path, e.g. '/api/v1/users/{id}'.")
+    description: str = Field(description="What this endpoint does.")
+    request_body: Optional[RequestSchema] = Field(
+        default=None,
+        description="Request body schema (null for GET/DELETE).",
+    )
+    response_body: ResponseSchema = Field(description="Response body schema.")
+    auth_required: bool = Field(description="Whether authentication is required.")
+    required_role: Optional[str] = Field(
+        default=None,
+        description="Role required to access this endpoint, if any.",
+    )
+    validation_rules: List[str] = Field(
+        default_factory=list,
+        description="Input validation rules.",
+    )
+    error_responses: List[Dict] = Field(
+        default_factory=list,
+        description="Possible error responses with status_code and description.",
+    )
+
+
+class APISchema(BaseModel):
+    """Output of the API schema generation stage."""
+
+    endpoints: List[EndpointSchema] = Field(
+        default_factory=list,
+        description="All API endpoints.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# UI Schema
+# ---------------------------------------------------------------------------
+
+class FormFieldSchema(BaseModel):
+    """A single form field in the UI."""
+
+    name: str = Field(description="Field name.")
+    field_type: str = Field(description="Input type: 'text', 'email', 'select', 'checkbox', etc.")
+    label: str = Field(description="Display label.")
+    api_field: str = Field(description="Corresponding API request body field name.")
+    required: bool = Field(default=False, description="Whether this field is required.")
+    validation: Optional[str] = Field(
+        default=None,
+        description="Validation rule description.",
+    )
+
+
+class FormSchema(BaseModel):
+    """A form in the UI."""
+
+    name: str = Field(description="Form name.")
+    fields: List[FormFieldSchema] = Field(
+        default_factory=list,
+        description="Form fields.",
+    )
+    submit_endpoint: str = Field(description="API endpoint path this form submits to.")
+    submit_method: str = Field(default="POST", description="HTTP method for form submission.")
+
+
+class ComponentSchema(BaseModel):
+    """A UI component on a page."""
+
+    name: str = Field(description="Component name.")
+    component_type: str = Field(
+        description="Component type: 'table', 'form', 'card', 'chart', 'button', etc."
+    )
+    props: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Component props as key-value pairs.",
+    )
+    api_endpoint: Optional[str] = Field(
+        default=None,
+        description="API endpoint this component fetches data from.",
+    )
+
+
+class PageSchema(BaseModel):
+    """A page in the UI."""
+
+    path: str = Field(description="URL path for this page.")
+    title: str = Field(description="Page title.")
+    role_required: Optional[str] = Field(
+        default=None,
+        description="Role required to access this page, if any.",
+    )
+    components: List[ComponentSchema] = Field(
+        default_factory=list,
+        description="Components on this page.",
+    )
+    forms: List[FormSchema] = Field(
+        default_factory=list,
+        description="Forms on this page.",
+    )
+    navigation_links: List[Dict] = Field(
+        default_factory=list,
+        description="Navigation links from this page.",
+    )
+
+
+class UISchema(BaseModel):
+    """Output of the UI schema generation stage."""
+
+    pages: List[PageSchema] = Field(
+        default_factory=list,
+        description="All pages in the application.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Auth Schema
+# ---------------------------------------------------------------------------
+
+class RoleSchema(BaseModel):
+    """A user role."""
+
+    name: str = Field(description="Role name.")
+    description: str = Field(default="", description="Role description.")
+    parent_role: Optional[str] = Field(
+        default=None,
+        description="Parent role this role inherits from.",
+    )
+
+
+class PermissionSchema(BaseModel):
+    """Permissions for a role on a resource."""
+
+    role: str = Field(description="Role name.")
+    resource: str = Field(description="Resource name (maps to a DB table).")
+    actions: List[str] = Field(
+        description="Allowed actions: 'create', 'read', 'update', 'delete', 'list'."
+    )
+
+
+class PlanSchema(BaseModel):
+    """A premium plan definition."""
+
+    name: str = Field(description="Plan name, e.g. 'free', 'pro', 'enterprise'.")
+    features: List[str] = Field(
+        default_factory=list,
+        description="Features available on this plan.",
+    )
+    restrictions: List[str] = Field(
+        default_factory=list,
+        description="Restrictions or limits on this plan.",
+    )
+
+
+class TokenConfig(BaseModel):
+    """JWT token configuration."""
+
+    expiry_seconds: int = Field(
+        default=3600,
+        description="Access token expiry in seconds.",
+    )
+    refresh_expiry_seconds: int = Field(
+        default=604800,
+        description="Refresh token expiry in seconds (default 7 days).",
+    )
+    algorithm: str = Field(
+        default="HS256",
+        description="JWT signing algorithm.",
+    )
+
+
+class AuthSchema(BaseModel):
+    """Output of the auth schema generation stage."""
+
+    auth_strategy: str = Field(
+        description="Authentication strategy: 'jwt', 'session', or 'oauth2'."
+    )
+    roles: List[str] = Field(
+        default_factory=list,
+        description="All role names in the system.",
+    )
+    permissions_matrix: Dict[str, Dict[str, List[str]]] = Field(
+        default_factory=dict,
+        description="Permissions matrix: role -> resource -> list of actions.",
+    )
+    premium_plan_gates: Dict[str, PlanSchema] = Field(
+        default_factory=dict,
+        description="Premium plan definitions keyed by plan name.",
+    )
+    token_config: TokenConfig = Field(
+        default_factory=TokenConfig,
+        description="Token configuration.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Validation Report
+# ---------------------------------------------------------------------------
+
+class ErrorEntry(BaseModel):
+    """A validation error."""
+
+    layer: str = Field(description="Schema layer: 'db', 'api', 'ui', 'auth', 'architecture'.")
+    field: str = Field(description="Field or element that has the error.")
+    description: str = Field(description="Description of the error.")
+
+
+class WarningEntry(BaseModel):
+    """A validation warning (non-blocking)."""
+
+    layer: str = Field(description="Schema layer.")
+    field: str = Field(description="Field or element with the warning.")
+    description: str = Field(description="Description of the warning.")
+
+
+class ConflictEntry(BaseModel):
+    """A conflict between schema layers."""
+
+    description: str = Field(description="Description of the conflict.")
+    resolution_strategy: str = Field(description="Suggested resolution strategy.")
+
+
+class ValidationReport(BaseModel):
+    """Output of the cross-layer validation stage."""
+
+    is_valid: bool = Field(description="Whether all schemas are consistent.")
+    errors: List[ErrorEntry] = Field(
+        default_factory=list,
+        description="Blocking errors that must be fixed.",
+    )
+    warnings: List[WarningEntry] = Field(
+        default_factory=list,
+        description="Non-blocking warnings.",
+    )
+    conflicts: List[ConflictEntry] = Field(
+        default_factory=list,
+        description="Conflicts between layers with resolution strategies.",
+    )
+    validated_at: str = Field(
+        default_factory=lambda: datetime.utcnow().isoformat(),
+        description="ISO 8601 timestamp of when validation ran.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Repair Report
+# ---------------------------------------------------------------------------
+
+class DiffEntry(BaseModel):
+    """A single repair diff."""
+
+    error_description: str = Field(description="The error that was fixed.")
+    layer_fixed: str = Field(description="Which schema layer was modified.")
+    field_fixed: str = Field(description="Which field was modified.")
+    before: str = Field(description="Value before the fix.")
+    after: str = Field(description="Value after the fix.")
+
+
+class RepairReport(BaseModel):
+    """Output of the repair stage."""
+
+    repairs: List[DiffEntry] = Field(
+        default_factory=list,
+        description="All repairs made.",
+    )
+    updated_schemas: Dict[str, object] = Field(
+        default_factory=dict,
+        description="Updated schema layers (only modified layers included).",
+    )
+    repair_attempt_number: int = Field(
+        ge=1,
+        le=3,
+        description="Which repair attempt this is (1, 2, or 3).",
+    )
+    unresolved_errors: List[str] = Field(
+        default_factory=list,
+        description="Errors that could not be fixed automatically.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Runtime Report
+# ---------------------------------------------------------------------------
+
+class SimulatedFlow(BaseModel):
+    """A simulated execution flow."""
+
+    name: str = Field(description="Flow name, e.g. 'CREATE User'.")
+    steps: List[str] = Field(description="Steps in the flow.")
+    result: str = Field(description="'pass' or 'fail'.")
+    failure_reason: Optional[str] = Field(
+        default=None,
+        description="Reason for failure if result is 'fail'.",
+    )
+
+
+class RuntimeReport(BaseModel):
+    """Output of the runtime validation stage."""
+
+    execution_viable: bool = Field(
+        description="Whether the application can be executed with the current schemas."
+    )
+    simulated_flows: List[SimulatedFlow] = Field(
+        default_factory=list,
+        description="Results of simulated execution flows.",
+    )
+    blocking_issues: List[str] = Field(
+        default_factory=list,
+        description="Issues that prevent execution.",
+    )
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Non-blocking concerns.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Final Output
+# ---------------------------------------------------------------------------
+
+class EvalMetrics(BaseModel):
+    """Pipeline evaluation metrics."""
+
+    total_latency_ms: int = Field(description="Total pipeline latency in milliseconds.")
+    total_tokens: int = Field(default=0, description="Total tokens used across all agents.")
+    repair_count: int = Field(default=0, description="Number of repair loops triggered.")
+    hitl_count: int = Field(default=0, description="Number of HITL interactions.")
+    stage_latencies: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-stage latency in milliseconds.",
+    )
+
+
+class MermaidDiagrams(BaseModel):
+    """Mermaid diagram strings generated by the logger agent."""
+
+    pipeline_flow: str = Field(
+        default="",
+        description="Mermaid flowchart of the pipeline execution.",
+    )
+    er_diagram: str = Field(
+        default="",
+        description="Mermaid ER diagram from the DB schema.",
+    )
+    api_sequence: str = Field(
+        default="",
+        description="Mermaid sequence diagram for the primary entity API flow.",
+    )
+
+
+class FinalOutput(BaseModel):
+    """The complete output of the ProtoFlow pipeline."""
+
+    session_id: str = Field(description="Unique session identifier.")
+    prompt: str = Field(description="Original user prompt.")
+    intent: Optional[IntentSchema] = Field(default=None, description="Extracted intent.")
+    architecture: Optional[ArchitectureSchema] = Field(
+        default=None, description="Designed architecture."
+    )
+    db_schema: Optional[DBSchema] = Field(default=None, description="Generated DB schema.")
+    api_schema: Optional[APISchema] = Field(default=None, description="Generated API schema.")
+    ui_schema: Optional[UISchema] = Field(default=None, description="Generated UI schema.")
+    auth_schema: Optional[AuthSchema] = Field(default=None, description="Generated auth schema.")
+    validation_report: Optional[ValidationReport] = Field(
+        default=None, description="Cross-layer validation report."
+    )
+    repair_report: Optional[RepairReport] = Field(
+        default=None, description="Repair report if repairs were made."
+    )
+    runtime_report: Optional[RuntimeReport] = Field(
+        default=None, description="Runtime simulation report."
+    )
+    mermaid_diagrams: MermaidDiagrams = Field(
+        default_factory=MermaidDiagrams,
+        description="Generated Mermaid diagrams.",
+    )
+    eval_metrics: Optional[EvalMetrics] = Field(
+        default=None, description="Pipeline evaluation metrics."
+    )
+    assumptions: List[str] = Field(
+        default_factory=list,
+        description="All assumptions made across all stages.",
+    )
+    conflicts: List[ConflictEntry] = Field(
+        default_factory=list,
+        description="All conflicts detected and their resolutions.",
+    )
+    created_at: str = Field(
+        default_factory=lambda: datetime.utcnow().isoformat(),
+        description="ISO 8601 timestamp of pipeline completion.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Integration Reference Types (used in AppSpec — Features B, C, D)
+# ---------------------------------------------------------------------------
+
+class IntegrationRef(BaseModel):
+    """
+    A reference to a registered integration.
+    integration_id must resolve against the integration REGISTRY at runtime.
+    action_id must be a valid action on that integration.
+    """
+    integration_id: str = Field(
+        description="Integration ID from the registry, e.g. 'slack', 'stripe'."
+    )
+    action_id: str = Field(
+        description="Action ID within the integration, e.g. 'send_message'."
+    )
+
+    def is_valid(self) -> bool:
+        """Check that both integration_id and action_id exist in the registry."""
+        from compiler.integrations.registry import get_action
+        return get_action(self.integration_id, self.action_id) is not None
+
+# ---------------------------------------------------------------------------
+# SSE Event Models
+# ---------------------------------------------------------------------------
+
+class StageUpdateEvent(BaseModel):
+    """SSE event emitted after each pipeline stage."""
+
+    event: str = Field(default="stage_update")
+    session_id: str = Field(description="Session identifier.")
+    stage: str = Field(description="Stage name.")
+    status: str = Field(
+        description="Stage status: 'running', 'complete', 'failed', 'repair_triggered', 'hitl_required'."
+    )
+    model: str = Field(default="", description="Model used for this stage.")
+    latency_ms: int = Field(default=0, description="Stage latency in milliseconds.")
+    confidence: Optional[float] = Field(default=None, description="Confidence score if available.")
+    tokens_used: int = Field(default=0, description="Tokens used in this stage.")
+    output_summary: str = Field(default="", description="Short summary of stage output.")
+    assumptions: List[str] = Field(default_factory=list, description="Assumptions made.")
+    conflicts: List[str] = Field(default_factory=list, description="Conflicts detected.")
+
+
+class HITLRequiredEvent(BaseModel):
+    """SSE event emitted when human input is required."""
+
+    event: str = Field(default="hitl_required")
+    session_id: str = Field(description="Session identifier.")
+    stage: str = Field(description="Stage that requires input.")
+    trigger_reason: str = Field(
+        description="Why HITL was triggered: 'always_on', 'low_confidence', 'ambiguous', 'repair_failed'."
+    )
+    questions: List[str] = Field(description="Questions to ask the user.")
+    options: Optional[List[str]] = Field(
+        default=None,
+        description="Multiple choice options if applicable.",
+    )
+    timeout_seconds: int = Field(default=300, description="Timeout in seconds.")
+
+
+class LogUpdateEvent(BaseModel):
+    """SSE event for log updates."""
+
+    event: str = Field(default="log_update")
+    session_id: str = Field(description="Session identifier.")
+    content: str = Field(description="Markdown string of the latest log entry.")
+
+
+class PipelineCompleteEvent(BaseModel):
+    """SSE event emitted when the pipeline finishes."""
+
+    event: str = Field(default="pipeline_complete")
+    session_id: str = Field(description="Session identifier.")
+    total_latency_ms: int = Field(description="Total pipeline latency.")
+    total_tokens: int = Field(default=0, description="Total tokens used.")
+    repair_count: int = Field(default=0, description="Number of repair loops.")
+    hitl_count: int = Field(default=0, description="Number of HITL interactions.")
+    final_schema: Optional[FinalOutput] = Field(default=None, description="Complete final output.")
+    mermaid_diagrams: MermaidDiagrams = Field(
+        default_factory=MermaidDiagrams,
+        description="Generated Mermaid diagrams.",
+    )
+    assumptions: List[str] = Field(default_factory=list, description="All assumptions.")
+    conflicts: List[ConflictEntry] = Field(default_factory=list, description="All conflicts.")
+
+
+class ClarifyRequest(BaseModel):
+    """Body for POST /clarify."""
+
+    session_id: str = Field(description="Session identifier.")
+    answers: List[str] = Field(description="Answers to the HITL questions.")
+    chosen_option: Optional[str] = Field(
+        default=None,
+        description="Chosen option if multiple choice was presented.",
+    )
+
+
+class ModifyRequest(BaseModel):
+    """Body for POST /modify — midway prompt modification."""
+
+    session_id: str = Field(description="Session identifier.")
+    modification: str = Field(description="The change or addition the user wants to apply.")
+
+
+class ModificationQueuedEvent(BaseModel):
+    """SSE event emitted immediately when a modification is received."""
+
+    event: str = Field(default="modification_queued")
+    session_id: str = Field(description="Session identifier.")
+    modification: str = Field(description="The modification text.")
+    applied_at_stage: str = Field(
+        default="pending",
+        description="The stage at which this will be/was applied.",
+    )
+
+
+class ModificationAppliedEvent(BaseModel):
+    """SSE event emitted when the pipeline picks up and applies the modification."""
+
+    event: str = Field(default="modification_applied")
+    session_id: str = Field(description="Session identifier.")
+    modification: str = Field(description="The applied modification text.")
+    applied_at_stage: str = Field(description="The pipeline stage where it was applied.")
+    new_prompt: str = Field(description="The updated prompt after applying modification.")
