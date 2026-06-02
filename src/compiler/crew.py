@@ -290,6 +290,17 @@ class ProtoFlowCrew:
             cache=False,
         )
 
+
+    @agent
+    def integration_agent(self) -> Agent:
+        logger.debug("[crew] Building integration_agent agent.")
+        return Agent(
+            config=self.agents_config["integration_agent"],  # type: ignore[index]
+            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.2),
+            verbose=True,
+            cache=False,
+        )
+
     # ── Task factory methods ──────────────────────────────────────────────────
 
     @task
@@ -364,6 +375,13 @@ class ProtoFlowCrew:
 
     # ── Crew assembly ─────────────────────────────────────────────────────────
 
+    @task
+    def task_generate_workflow_stubs(self) -> Task:
+        logger.debug("[crew] Building task_generate_workflow_stubs.")
+        return Task(
+            config=self.tasks_config["task_generate_workflow_stubs"],  # type: ignore[index]
+        )
+
     @crew
     def crew(self) -> Crew:
         """
@@ -416,6 +434,7 @@ class PipelineSession:
         self.validation_report: Optional[dict] = None
         self.repair_report: Optional[dict] = None
         self.runtime_report: Optional[dict] = None
+        self.workflow_stubs: list = []
         self.log_output: Optional[dict] = None
 
         # Metrics
@@ -1052,6 +1071,353 @@ async def run_pipeline(session: PipelineSession) -> None:
     await _apply_pending_modification(session, "before_validation")
 
     # ─────────────────────────────────────────────────────────────────────────
+    # STAGE 3.5 — Workflow Stub Generation (runs only when integrations requested)
+    # ─────────────────────────────────────────────────────────────────────────
+    from compiler.integrations.registry import REGISTRY, get_integration, get_action
+    from compiler.schemas.contracts import WorkflowTrigger, WorkflowStub
+
+    async def _stage_workflow_stubs() -> list:
+        """
+        Hybrid workflow stub generation:
+          Step 1 — Deterministic skeletons from registry + intent integrations
+          Step 2 — LLM enrichment (trigger conditions, payload mappings, descriptions)
+          Step 3 — Validation: drop any stub whose integration_id or action_id
+                   does not exist in REGISTRY
+        Returns empty list if no integrations were requested.
+        """
+        requested = (session.intent or {}).get("integrations", [])
+        if not requested:
+            logger.info("[session:%s] No integrations requested — skipping workflow stubs.", session.session_id)
+            return []
+
+        logger.info("[session:%s] Generating workflow stubs for integrations: %s", session.session_id, requested)
+
+        # STEP 1 — Deterministic skeleton generation
+        # Priority action per integration (first match wins)
+        _ACTION_PRIORITY: dict[str, str] = {
+            "slack":        "send_message",
+            "gmail":        "send_email",
+            "stripe":       "create_customer",
+            "whatsapp":     "send_template_message",
+            "webhook":      "post_payload",
+            "jira":         "create_issue",
+            "google_sheets":"append_row",
+            "hubspot":      "create_contact",
+            "notion":       "create_page",
+            "twilio_sms":   "send_sms",
+        }
+        # Default event per integration type
+        _EVENT_DEFAULT: dict[str, str] = {
+            "slack":        "status_changed",
+            "gmail":        "created",
+            "stripe":       "created",
+            "whatsapp":     "status_changed",
+            "webhook":      "created",
+            "jira":         "created",
+            "google_sheets":"updated",
+            "hubspot":      "updated",
+            "notion":       "created",
+            "twilio_sms":   "status_changed",
+        }
+
+        # Get entity names from architecture for trigger entity matching
+        arch_entities = []
+        if session.architecture:
+            arch_entities = [e.get("name", "") if isinstance(e, dict) else getattr(e, "name", "")
+                             for e in (session.architecture.get("entities", []) if isinstance(session.architecture, dict)
+                             else getattr(session.architecture, "entities", []))]
+
+        def _best_entity(integration_id: str) -> str:
+            """Pick the most relevant entity for a given integration."""
+            # Heuristic: prefer entity names that match integration domain keywords
+            _ENTITY_HINTS: dict[str, list[str]] = {
+                "slack":        ["task", "deal", "issue", "ticket", "order", "project"],
+                "gmail":        ["order", "user", "customer", "invoice", "booking"],
+                "stripe":       ["user", "customer", "subscription", "payment", "order"],
+                "whatsapp":     ["deal", "order", "booking", "appointment", "lead"],
+                "webhook":      ["event", "record", "item"],
+                "jira":         ["task", "issue", "bug", "ticket", "story"],
+                "google_sheets":["report", "record", "entry", "row", "data"],
+                "hubspot":      ["contact", "lead", "deal", "customer"],
+                "notion":       ["note", "page", "document", "record"],
+                "twilio_sms":   ["user", "customer", "booking", "appointment"],
+            }
+            hints = _ENTITY_HINTS.get(integration_id, [])
+            for hint in hints:
+                for entity in arch_entities:
+                    if hint.lower() in entity.lower():
+                        return entity
+            # Fallback: return first entity or generic name
+            return arch_entities[0] if arch_entities else "Record"
+
+        skeletons = []
+        for integ_id in requested:
+            integ_id_lower = integ_id.lower().strip()
+            integration = get_integration(integ_id_lower)
+            if not integration:
+                logger.warning("[session:%s] Requested integration %r not in registry — skipping.", session.session_id, integ_id)
+                continue
+            action_id = _ACTION_PRIORITY.get(integ_id_lower, integration.actions[0].id if integration.actions else None)
+            if not action_id:
+                continue
+            entity = _best_entity(integ_id_lower)
+            event = _EVENT_DEFAULT.get(integ_id_lower, "status_changed")
+            skeleton = {
+                "name": f"Trigger {integration.display_name} on {entity} {event.replace(chr(95), chr(32))}",
+                "trigger": {"entity": entity, "event": event, "condition": None},
+                "integration_id": integ_id_lower,
+                "action_id": action_id,
+                "payload_mapping": {},
+                "description": "",
+                "is_valid": True,
+            }
+            skeletons.append(skeleton)
+            logger.info("[session:%s] Stub skeleton: %s -> %s.%s", session.session_id, entity, integ_id_lower, action_id)
+
+        if not skeletons:
+            logger.warning("[session:%s] No valid skeletons generated.", session.session_id)
+            return []
+
+        # STEP 2 — LLM enrichment
+        # Build registry summary for the LLM (only requested integrations)
+        registry_summary = {}
+        for integ_id in [s["integration_id"] for s in skeletons]:
+            integ = get_integration(integ_id)
+            if integ:
+                registry_summary[integ_id] = {
+                    "actions": [{
+                        "id": a.id,
+                        "input_fields": [f.name for f in a.input_schema]
+                    } for a in integ.actions]
+                }
+
+        # Compact entity schemas for payload mapping context
+        entity_schemas_compact = _compact(session.db_schema or {})
+
+        enriched_raw = await _kickoff_task(
+            "task_generate_workflow_stubs",
+            {
+                "integration_registry": json.dumps(registry_summary),
+                "stub_skeletons": json.dumps(skeletons),
+                "entity_schemas": entity_schemas_compact,
+                "user_prompt": session.prompt[:300],
+            }
+        )
+
+        # LLM may return a dict wrapper or a list directly
+        if isinstance(enriched_raw, dict):
+            enriched_list = enriched_raw.get("workflow_stubs", enriched_raw.get("stubs", list(enriched_raw.values())[0] if enriched_raw else []))
+        elif isinstance(enriched_raw, list):
+            enriched_list = enriched_raw
+        else:
+            enriched_list = skeletons  # fallback to deterministic skeletons
+
+        # STEP 3 — Validation: drop invalid stubs, coerce to WorkflowStub models
+        validated_stubs = []
+        for stub_data in enriched_list:
+            if not isinstance(stub_data, dict):
+                continue
+            integ_id = stub_data.get("integration_id", "")
+            act_id = stub_data.get("action_id", "")
+            # Registry validation — deterministic
+            action = get_action(integ_id, act_id)
+            if not action:
+                logger.warning("[session:%s] Stub dropped — invalid registry ref %s.%s", session.session_id, integ_id, act_id)
+                continue
+            # Ensure trigger is a dict before passing to Pydantic
+            trigger_data = stub_data.get("trigger", {})
+            if not isinstance(trigger_data, dict):
+                trigger_data = {"entity": "Record", "event": "created", "condition": None}
+            try:
+                stub = WorkflowStub(
+                    name=stub_data.get("name", f"{integ_id} workflow"),
+                    trigger=WorkflowTrigger(**trigger_data),
+                    integration_id=integ_id,
+                    action_id=act_id,
+                    payload_mapping=stub_data.get("payload_mapping", {}),
+                    description=stub_data.get("description", ""),
+                    is_valid=True,
+                )
+                validated_stubs.append(stub)
+            except Exception as e:
+                logger.warning("[session:%s] Stub validation failed: %s — %s", session.session_id, stub_data.get("name",""), e)
+
+        logger.info("[session:%s] Workflow stubs generated: %d valid, %d dropped.",
+                    session.session_id, len(validated_stubs), len(enriched_list) - len(validated_stubs))
+        return validated_stubs
+
+    # Run workflow stubs stage (only fires if integrations were requested)
+    _workflow_stubs_result = await _run_stage(
+        session, "workflow_stubs",
+        "groq/llama-3.3-70b-versatile", _stage_workflow_stubs()
+    )
+    # _run_stage returns a dict on error, list on success — handle both
+    if isinstance(_workflow_stubs_result, list):
+        session.workflow_stubs = _workflow_stubs_result
+    else:
+        session.workflow_stubs = []
+
+
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STAGE 3.5 — Workflow Stub Generation
+    # Runs only when integrations were requested in the user prompt.
+    # Deterministic skeletons + LLM enrichment + registry validation.
+    # ─────────────────────────────────────────────────────────────────────────
+    from compiler.integrations.registry import get_integration, get_action
+    from compiler.schemas.contracts import WorkflowTrigger, WorkflowStub
+
+    async def _stage_workflow_stubs() -> list:
+        requested = (session.intent or {}).get("integrations", [])
+        if not requested:
+            logger.info("[session:%s] No integrations requested — skipping workflow stubs.", session.session_id)
+            return []
+
+        logger.info("[session:%s] Generating workflow stubs for: %s", session.session_id, requested)
+
+        # Priority action per integration (deterministic skeleton)
+        _ACTION_PRIORITY = {
+            "slack": "send_message", "gmail": "send_email",
+            "stripe": "create_customer", "whatsapp": "send_template_message",
+            "webhook": "post_payload", "jira": "create_issue",
+            "google_sheets": "append_row", "hubspot": "create_contact",
+            "notion": "create_page", "twilio_sms": "send_sms",
+        }
+        _EVENT_DEFAULT = {
+            "slack": "status_changed", "gmail": "created",
+            "stripe": "created", "whatsapp": "status_changed",
+            "webhook": "created", "jira": "created",
+            "google_sheets": "updated", "hubspot": "updated",
+            "notion": "created", "twilio_sms": "status_changed",
+        }
+        _ENTITY_HINTS = {
+            "slack":         ["task", "deal", "issue", "ticket", "order"],
+            "gmail":         ["order", "user", "customer", "invoice", "booking"],
+            "stripe":        ["user", "customer", "subscription", "payment", "order"],
+            "whatsapp":      ["deal", "order", "booking", "appointment", "lead"],
+            "webhook":       ["event", "record", "item"],
+            "jira":          ["task", "issue", "bug", "ticket"],
+            "google_sheets": ["report", "record", "entry"],
+            "hubspot":       ["contact", "lead", "deal", "customer"],
+            "notion":        ["note", "page", "document"],
+            "twilio_sms":    ["user", "customer", "booking", "appointment"],
+        }
+
+        arch = session.architecture or {}
+        arch_entities = []
+        raw_entities = arch.get("entities", []) if isinstance(arch, dict) else getattr(arch, "entities", [])
+        for e in raw_entities:
+            name = e.get("name", "") if isinstance(e, dict) else getattr(e, "name", "")
+            if name:
+                arch_entities.append(name)
+
+        def _best_entity(integ_id: str) -> str:
+            hints = _ENTITY_HINTS.get(integ_id, [])
+            for hint in hints:
+                for entity in arch_entities:
+                    if hint.lower() in entity.lower():
+                        return entity
+            return arch_entities[0] if arch_entities else "Record"
+
+        # Build deterministic skeletons
+        skeletons = []
+        for integ_id in requested:
+            iid = integ_id.lower().strip()
+            integration = get_integration(iid)
+            if not integration:
+                logger.warning("[session:%s] Integration %r not in registry — skipped.", session.session_id, iid)
+                continue
+            action_id = _ACTION_PRIORITY.get(iid) or (integration.actions[0].id if integration.actions else None)
+            if not action_id:
+                continue
+            entity = _best_entity(iid)
+            event = _EVENT_DEFAULT.get(iid, "status_changed")
+            skeletons.append({
+                "name": f"Trigger {integration.display_name} when {entity} {event.replace(chr(95), chr(32))}",
+                "trigger": {"entity": entity, "event": event, "condition": None},
+                "integration_id": iid,
+                "action_id": action_id,
+                "payload_mapping": {},
+                "description": "",
+                "is_valid": True,
+            })
+            logger.info("[session:%s] Skeleton: %s -> %s.%s", session.session_id, entity, iid, action_id)
+
+        if not skeletons:
+            return []
+
+        # LLM enrichment — add conditions, payload mappings, descriptions
+        registry_summary = {}
+        for s in skeletons:
+            integ = get_integration(s["integration_id"])
+            if integ:
+                registry_summary[s["integration_id"]] = {
+                    "actions": [{"id": a.id, "input_fields": [f.name for f in a.input_schema]}
+                                for a in integ.actions]
+                }
+
+        enriched_raw = await _kickoff_task(
+            "task_generate_workflow_stubs",
+            {
+                "integration_registry": json.dumps(registry_summary),
+                "stub_skeletons": json.dumps(skeletons),
+                "entity_schemas": _compact(session.db_schema or {}),
+                "user_prompt": session.prompt[:300],
+            }
+        )
+
+        # Normalise LLM output — may return list or dict wrapper
+        if isinstance(enriched_raw, list):
+            enriched_list = enriched_raw
+        elif isinstance(enriched_raw, dict):
+            for key in ("workflow_stubs", "stubs", "workflowStubs"):
+                if key in enriched_raw:
+                    enriched_list = enriched_raw[key]
+                    break
+            else:
+                enriched_list = skeletons  # fallback to deterministic
+        else:
+            enriched_list = skeletons
+
+        # Validate every stub against registry — drop invalid refs
+        validated = []
+        for stub_data in enriched_list:
+            if not isinstance(stub_data, dict):
+                continue
+            iid = stub_data.get("integration_id", "")
+            aid = stub_data.get("action_id", "")
+            if not get_action(iid, aid):
+                logger.warning("[session:%s] Stub dropped — bad registry ref %s.%s", session.session_id, iid, aid)
+                continue
+            trigger_data = stub_data.get("trigger", {})
+            if not isinstance(trigger_data, dict):
+                trigger_data = {"entity": "Record", "event": "created", "condition": None}
+            try:
+                stub = WorkflowStub(
+                    name=stub_data.get("name", f"{iid} workflow"),
+                    trigger=WorkflowTrigger(**trigger_data),
+                    integration_id=iid,
+                    action_id=aid,
+                    payload_mapping=stub_data.get("payload_mapping", {}),
+                    description=stub_data.get("description", ""),
+                    is_valid=True,
+                )
+                validated.append(stub)
+            except Exception as e:
+                logger.warning("[session:%s] Stub Pydantic error: %s", session.session_id, e)
+
+        logger.info("[session:%s] Workflow stubs: %d valid, %d dropped.",
+                    session.session_id, len(validated), len(enriched_list) - len(validated))
+        return validated
+
+    _wf_result = await _run_stage(
+        session, "workflow_stubs",
+        "groq/llama-3.3-70b-versatile", _stage_workflow_stubs()
+    )
+    session.workflow_stubs = _wf_result if isinstance(_wf_result, list) else []
+
+
     # STAGE 4 + 5 — Validation + Repair loop
     # ─────────────────────────────────────────────────────────────────────────
     # Track the best (most complete) validation report seen across all attempts.
@@ -1350,6 +1716,7 @@ async def run_pipeline(session: PipelineSession) -> None:
         "validation_report": session.validation_report,
         "repair_report": session.repair_report,
         "runtime_report": session.runtime_report,
+        "workflow_stubs": [s.model_dump() if hasattr(s, "model_dump") else s for s in (session.workflow_stubs or [])],
     }
 
     from compiler.schemas.contracts import FinalOutput

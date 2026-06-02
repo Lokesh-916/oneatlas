@@ -356,3 +356,40 @@ task_log_progress:
     - task_validate_runtime
   async_execution: true
 
+
+
+task_generate_workflow_stubs:
+  description: >
+    Enrich the provided workflow stub skeletons with precise trigger conditions,
+    payload field mappings, and human-readable descriptions.
+
+    Integration Registry (valid IDs and actions): {integration_registry}
+    Stub Skeletons (deterministically generated): {stub_skeletons}
+    Entity Schemas (DB tables and columns): {entity_schemas}
+    User Prompt: {user_prompt}
+
+    For each stub skeleton:
+    1. Set trigger.condition — a concrete filter expression using entity field names.
+       Example: "status == 'closed'" or "due_date < now() AND status != 'completed'"
+       Use null if no condition is needed (e.g. trigger on every creation).
+    2. Set payload_mapping — map entity field names to action input field names.
+       Format: { "entity.field_name": "action_input_field_name" }
+       Only use fields that exist in the entity schema. Only map to fields in the action input_schema.
+    3. Set description — one sentence explaining what this workflow does and why.
+
+    CRITICAL RULES:
+    - Do NOT change integration_id or action_id. They are already validated.
+    - Do NOT invent entity fields. Only use fields present in entity_schemas.
+    - Do NOT change the trigger.entity or trigger.event. Only add trigger.condition.
+    - Return ONLY the enriched stubs array. No prose, no markdown, no explanation.
+    - If you cannot determine a meaningful condition or mapping, use null/empty dict.
+
+    Respond only with valid JSON array of WorkflowStub objects.
+
+  expected_output: >
+    A valid JSON array of enriched WorkflowStub objects. Each object must have:
+    name (string), trigger (object with entity, event, condition),
+    integration_id (string), action_id (string),
+    payload_mapping (object), description (string), is_valid (bool, always true).
+  agent: integration_agent
+  async_execution: false

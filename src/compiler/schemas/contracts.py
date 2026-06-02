@@ -609,6 +609,10 @@ class FinalOutput(BaseModel):
     runtime_report: Optional[RuntimeReport] = Field(
         default=None, description="Runtime simulation report."
     )
+    workflow_stubs: List[WorkflowStub] = Field(
+        default_factory=list,
+        description="Generated workflow stubs for integrations requested in the prompt.",
+    )
     mermaid_diagrams: MermaidDiagrams = Field(
         default_factory=MermaidDiagrams,
         description="Generated Mermaid diagrams.",
@@ -651,6 +655,56 @@ class IntegrationRef(BaseModel):
         """Check that both integration_id and action_id exist in the registry."""
         from compiler.integrations.registry import get_action
         return get_action(self.integration_id, self.action_id) is not None
+
+# ---------------------------------------------------------------------------
+# Workflow Stub Types (Feature B)
+# ---------------------------------------------------------------------------
+
+class WorkflowTrigger(BaseModel):
+    """The entity event that fires a workflow stub."""
+    entity: str = Field(
+        description="Entity name from the DataSchema, e.g. 'Deal', 'Task', 'Order'."
+    )
+    event: str = Field(
+        description="Event type: created | updated | deleted | status_changed."
+    )
+    condition: Optional[str] = Field(
+        default=None,
+        description="Optional filter condition, e.g. \"status == 'closed'\". LLM-generated."
+    )
+
+
+class WorkflowStub(BaseModel):
+    """
+    A named automation stub linking an entity event to an integration action.
+    integration_id and action_id are validated against the integration REGISTRY.
+    A stub with is_valid=False is never included in the final AppSpec output.
+    """
+    name: str = Field(
+        description="Human-readable description of what this workflow does."
+    )
+    trigger: WorkflowTrigger = Field(
+        description="The entity event that triggers this workflow."
+    )
+    integration_id: str = Field(
+        description="Integration ID from the registry, e.g. 'slack', 'stripe'."
+    )
+    action_id: str = Field(
+        description="Action ID within the integration, e.g. 'send_message'."
+    )
+    payload_mapping: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Maps entity fields to action input fields. e.g. {'deal.title': 'text'}."
+    )
+    description: str = Field(
+        default="",
+        description="LLM-generated human-readable summary of the workflow."
+    )
+    is_valid: bool = Field(
+        default=True,
+        description="False if integration_id or action_id do not exist in the registry."
+    )
+
 
 # ---------------------------------------------------------------------------
 # SSE Event Models

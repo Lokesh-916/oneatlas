@@ -20,6 +20,26 @@ def init_results_file():
         except Exception as e:
             logger.error(f"Failed to initialize eval_results.json: {e}")
 
+def _count_correct_integrations(session) -> int:
+    """
+    Count how many requested integrations produced at least one valid workflow stub.
+    A stub is correctly detected if its integration_id is in the registry and
+    appears in the session workflow_stubs list.
+    """
+    from compiler.integrations.registry import REGISTRY
+    requested = (session.intent or {}).get("integrations", []) if session.intent else []
+    if not requested:
+        return 0
+    stubs = getattr(session, "workflow_stubs", None) or []
+    detected_ids = set()
+    for stub in stubs:
+        iid = stub.integration_id if hasattr(stub, "integration_id") else stub.get("integration_id", "")
+        if iid:
+            detected_ids.add(iid)
+    return sum(1 for r in requested if r.lower().strip() in detected_ids)
+
+
+
 def record_auto_metrics(
     prompt_id: int,
     label: str,
@@ -116,7 +136,9 @@ def record_auto_metrics(
             "stages_failed": stages_failed,
             "assumptions_count": assumptions_count,
             "conflicts_count": conflicts_count,
-            "confidence_scores": confidence_scores
+            "confidence_scores": confidence_scores,
+            "integrations_correctly_detected": _count_correct_integrations(session),
+            "workflow_stubs_generated": len(getattr(session, "workflow_stubs", None) or [])
         },
         "human_judgment": None,
         "human_notes": None,

@@ -1,4 +1,4 @@
-﻿# ProtoFlow Agent Definitions
+# ProtoFlow Agent Definitions
 # All agents use Groq via crewai LiteLLM routing.
 # Model: llama-3.3-70b-versatile on Groq free tier
 #
@@ -217,3 +217,26 @@ progress_logger:
   temperature: 0.2
 
 
+
+
+integration_agent:
+  role: >
+    Integration Workflow Architect
+  goal: >
+    Given a set of workflow stub skeletons and entity schemas, enrich each stub with
+    a precise trigger condition, field-level payload mapping, and a clear description.
+    Every stub you produce must reference a real entity field and a real action input field.
+    Never invent integration IDs or action IDs that were not given to you.
+  backstory: >
+    You are a senior integration engineer who has connected dozens of SaaS products to
+    Slack, Stripe, WhatsApp, and Gmail. You think in terms of concrete field mappings —
+    which entity field goes to which action parameter — and you always document the
+    trigger condition precisely so a developer can implement it without guessing.
+  llm: groq/llama-3.3-70b-versatile
+  verbose: true
+  allow_delegation: false
+  max_iter: 3
+  max_rpm: 5
+  memory: false
+  cache: false
+  temperature: 0.2
