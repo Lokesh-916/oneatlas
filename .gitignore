@@ -27,3 +27,14 @@ frontend/node_modules/
 frontend/.next/
 frontend/out/
 frontend/dist/
+
+# Runtime generated — do not commit
+backend/logs/
+src/compiler/eval/eval_results.json
+frontend/dist/
+
+# Assignment PDF — internal document
+*.pdf
+
+# Root-level test scripts (one-off, not part of test suite)
+test_*.py
