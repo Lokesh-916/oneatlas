@@ -435,6 +435,7 @@ class PipelineSession:
         self.repair_report: Optional[dict] = None
         self.runtime_report: Optional[dict] = None
         self.workflow_stubs: list = []
+        self.integration_hooks: list = []
         self.log_output: Optional[dict] = None
 
         # Metrics
@@ -1417,6 +1418,78 @@ async def run_pipeline(session: PipelineSession) -> None:
     )
     session.workflow_stubs = _wf_result if isinstance(_wf_result, list) else []
 
+    # ── Build integration hooks deterministically from validated stubs ────────
+    # One hook per unique (integration_id, action_id) pair. No LLM call.
+    def _build_integration_hooks(stubs: list) -> list:
+        """
+        Derive IntegrationHook objects from validated workflow stubs.
+        Deterministic: reads auth_type and required_inputs directly from REGISTRY.
+        Deduplicates by hook_id = hook_{integration_id}_{action_id}.
+        """
+        from compiler.integrations.registry import get_integration, get_action
+        from compiler.schemas.contracts import IntegrationHook
+
+        seen: dict[str, IntegrationHook] = {}
+        for stub in stubs:
+            iid = stub.integration_id if hasattr(stub, "integration_id") else stub.get("integration_id", "")
+            aid = stub.action_id if hasattr(stub, "action_id") else stub.get("action_id", "")
+            hook_id = f"hook_{iid}_{aid}"
+            if hook_id in seen:
+                continue  # already built this hook
+
+            integration = get_integration(iid)
+            action = get_action(iid, aid)
+
+            if not integration or not action:
+                # Build an invalid hook so the validator can report it
+                seen[hook_id] = IntegrationHook(
+                    hook_id=hook_id,
+                    integration_id=iid,
+                    action_id=aid,
+                    auth_type="unknown",
+                    required_inputs=[],
+                    is_stub=True,
+                    validation_status="invalid",
+                    validation_errors=[f"integration_id={iid!r} or action_id={aid!r} not found in registry"]
+                )
+                continue
+
+            required_inputs = [f.name for f in action.input_schema if f.required]
+            v_status = "stub" if integration.is_stub else "valid"
+
+            seen[hook_id] = IntegrationHook(
+                hook_id=hook_id,
+                integration_id=iid,
+                action_id=aid,
+                auth_type=integration.auth_type,
+                required_inputs=required_inputs,
+                is_stub=integration.is_stub,
+                validation_status=v_status,
+                validation_errors=[]
+            )
+            logger.info(
+                "[session:%s] IntegrationHook built: %s (status=%s)",
+                session.session_id, hook_id, v_status
+            )
+
+        return list(seen.values())
+
+    # Attach hook_id back onto each stub (normalised reference)
+    updated_stubs = []
+    for stub in session.workflow_stubs:
+        hook_id = f"hook_{stub.integration_id}_{stub.action_id}"
+        # Re-create stub with hook_id set (WorkflowStub is immutable Pydantic model)
+        updated_stubs.append(stub.model_copy(update={"hook_id": hook_id}))
+    session.workflow_stubs = updated_stubs
+
+    session.integration_hooks = _build_integration_hooks(session.workflow_stubs)
+    logger.info(
+        "[session:%s] Integration hooks built: %d hooks for %d stubs.",
+        session.session_id, len(session.integration_hooks), len(session.workflow_stubs)
+    )
+
+
+
 
     # STAGE 4 + 5 — Validation + Repair loop
     # ─────────────────────────────────────────────────────────────────────────
@@ -1717,6 +1790,7 @@ async def run_pipeline(session: PipelineSession) -> None:
         "repair_report": session.repair_report,
         "runtime_report": session.runtime_report,
         "workflow_stubs": [s.model_dump() if hasattr(s, "model_dump") else s for s in (session.workflow_stubs or [])],
+        "integration_hooks": [h.model_dump() if hasattr(h, "model_dump") else h for h in (session.integration_hooks or [])],
     }
 
     from compiler.schemas.contracts import FinalOutput

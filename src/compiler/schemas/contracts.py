@@ -613,6 +613,10 @@ class FinalOutput(BaseModel):
         default_factory=list,
         description="Generated workflow stubs for integrations requested in the prompt.",
     )
+    integration_hooks: List[IntegrationHook] = Field(
+        default_factory=list,
+        description="Integration hooks — one per unique (integration_id, action_id) pair. Referenced by workflow_stubs via hook_id.",
+    )
     mermaid_diagrams: MermaidDiagrams = Field(
         default_factory=MermaidDiagrams,
         description="Generated Mermaid diagrams.",
@@ -660,6 +664,47 @@ class IntegrationRef(BaseModel):
 # Workflow Stub Types (Feature B)
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# Integration Hook Types (Feature C)
+# ---------------------------------------------------------------------------
+
+class IntegrationHook(BaseModel):
+    """
+    Execution binding for an integration action.
+    One hook per unique (integration_id, action_id) pair across all workflow stubs.
+    WorkflowStubs reference hooks by hook_id — avoiding data duplication.
+    """
+    hook_id: str = Field(
+        description="Deterministic ID: hook_{integration_id}_{action_id}."
+    )
+    integration_id: str = Field(
+        description="Integration ID from the registry."
+    )
+    action_id: str = Field(
+        description="Action ID within the integration."
+    )
+    auth_type: str = Field(
+        description="Auth type from registry: oauth2 | api_key | webhook_secret | none."
+    )
+    required_inputs: List[str] = Field(
+        default_factory=list,
+        description="Required input field names from the action input_schema."
+    )
+    is_stub: bool = Field(
+        default=False,
+        description="True if the integration HTTP call is not implemented."
+    )
+    validation_status: str = Field(
+        default="valid",
+        description="Validation result: valid | invalid | stub."
+    )
+    validation_errors: List[str] = Field(
+        default_factory=list,
+        description="Validation error messages. Empty when validation_status is valid."
+    )
+
+
 class WorkflowTrigger(BaseModel):
     """The entity event that fires a workflow stub."""
     entity: str = Field(
@@ -703,6 +748,10 @@ class WorkflowStub(BaseModel):
     is_valid: bool = Field(
         default=True,
         description="False if integration_id or action_id do not exist in the registry."
+    )
+    hook_id: Optional[str] = Field(
+        default=None,
+        description="Reference to the IntegrationHook.hook_id that executes this stub."
     )
 
 
