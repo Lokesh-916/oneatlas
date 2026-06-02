@@ -44,6 +44,7 @@ from crewai import Agent, Crew, LLM, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from compiler.tools.json_repair_tool import extract_json
+from compiler.tools.routing import model_for_stage, cost_for_tokens, routing_summary
 
 if TYPE_CHECKING:
     from compiler.schemas.contracts import (
@@ -57,6 +58,18 @@ logger = logging.getLogger("protoflow.crew")
 SSEEmitter = Callable[[str, str, dict], Coroutine[Any, Any, None]]
 
 MAX_REPAIR_LOOPS = int(os.getenv("MAX_REPAIR_LOOPS", "3"))
+
+def _llm_for_agent(agent_name: str) -> "LLM":
+    """
+    Returns a CrewAI LLM object for the given agent name.
+    Model and temperature come from routing.yaml — not hardcoded.
+    Falls back to Groq defaults if stage not found in config.
+    """
+    primary, _fallback, temp = model_for_stage(agent_name)
+    logger.debug("[routing] Agent %s -> model=%s temp=%s", agent_name, primary, temp)
+    return LLM(model=primary, temperature=temp)
+
+
 HITL_TIMEOUT_SECONDS = int(os.getenv("HITL_TIMEOUT_SECONDS", "300"))
 
 import random
@@ -195,7 +208,7 @@ class ProtoFlowCrew:
         logger.debug("[crew] Building intent_extractor agent.")
         return Agent(
             config=self.agents_config["intent_extractor"],  # type: ignore[index]
-            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.1),
+            llm=_llm_for_agent("intent_extractor"),
             verbose=True,
             cache=False,
         )
@@ -205,7 +218,7 @@ class ProtoFlowCrew:
         logger.debug("[crew] Building system_architect agent.")
         return Agent(
             config=self.agents_config["system_architect"],  # type: ignore[index]
-            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.2),
+            llm=_llm_for_agent("system_architect"),
             verbose=True,
             cache=False,
         )
@@ -215,7 +228,7 @@ class ProtoFlowCrew:
         logger.debug("[crew] Building db_schema_agent agent.")
         return Agent(
             config=self.agents_config["db_schema_agent"],  # type: ignore[index]
-            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.2),
+            llm=_llm_for_agent("db_schema_agent"),
             verbose=True,
             cache=False,
         )
@@ -225,7 +238,7 @@ class ProtoFlowCrew:
         logger.debug("[crew] Building api_schema_agent agent.")
         return Agent(
             config=self.agents_config["api_schema_agent"],  # type: ignore[index]
-            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.2),
+            llm=_llm_for_agent("api_schema_agent"),
             verbose=True,
             cache=False,
         )
@@ -235,7 +248,7 @@ class ProtoFlowCrew:
         logger.debug("[crew] Building ui_schema_agent agent.")
         return Agent(
             config=self.agents_config["ui_schema_agent"],  # type: ignore[index]
-            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.2),
+            llm=_llm_for_agent("ui_schema_agent"),
             verbose=True,
             cache=False,
         )
@@ -245,7 +258,7 @@ class ProtoFlowCrew:
         logger.debug("[crew] Building auth_agent agent.")
         return Agent(
             config=self.agents_config["auth_agent"],  # type: ignore[index]
-            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.2),
+            llm=_llm_for_agent("auth_agent"),
             verbose=True,
             cache=False,
         )
@@ -255,7 +268,7 @@ class ProtoFlowCrew:
         logger.debug("[crew] Building validator_agent agent.")
         return Agent(
             config=self.agents_config["validator_agent"],  # type: ignore[index]
-            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.1),
+            llm=_llm_for_agent("validator_agent"),
             verbose=True,
             cache=False,
         )
@@ -265,7 +278,7 @@ class ProtoFlowCrew:
         logger.debug("[crew] Building repair_agent agent.")
         return Agent(
             config=self.agents_config["repair_agent"],  # type: ignore[index]
-            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.2),
+            llm=_llm_for_agent("repair_agent"),
             verbose=True,
             cache=False,
         )
@@ -275,7 +288,7 @@ class ProtoFlowCrew:
         logger.debug("[crew] Building runtime_validator agent.")
         return Agent(
             config=self.agents_config["runtime_validator"],  # type: ignore[index]
-            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.1),
+            llm=_llm_for_agent("runtime_validator"),
             verbose=True,
             cache=False,
         )
@@ -285,7 +298,7 @@ class ProtoFlowCrew:
         logger.debug("[crew] Building progress_logger agent.")
         return Agent(
             config=self.agents_config["progress_logger"],  # type: ignore[index]
-            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.3),
+            llm=_llm_for_agent("progress_logger"),
             verbose=True,
             cache=False,
         )
@@ -296,7 +309,7 @@ class ProtoFlowCrew:
         logger.debug("[crew] Building integration_agent agent.")
         return Agent(
             config=self.agents_config["integration_agent"],  # type: ignore[index]
-            llm=LLM(model="groq/llama-3.3-70b-versatile", temperature=0.2),
+            llm=_llm_for_agent("integration_agent"),
             verbose=True,
             cache=False,
         )
@@ -437,6 +450,8 @@ class PipelineSession:
         self.workflow_stubs: list = []
         self.integration_hooks: list = []
         self.app_spec: Optional[dict] = None
+        self.stage_models: dict[str, str] = {}   # stage -> model actually used
+        self.stage_costs: dict[str, float] = {}  # stage -> estimated USD cost
         self.log_output: Optional[dict] = None
 
         # Metrics
@@ -609,6 +624,9 @@ async def _run_stage(
         result = await coro
         latency_ms = int((time.monotonic() - t0) * 1000)
         session.stage_latencies[stage_name] = latency_ms
+        # Record which model was used for this stage (from routing config)
+        _prim, _fb, _tmp = model_for_stage(stage_name)
+        session.stage_models[stage_name] = _prim
 
         # Summarise output for SSE (first 120 chars of JSON)
         summary = ""
@@ -725,6 +743,21 @@ async def run_pipeline(session: PipelineSession) -> None:
                 if callable(agent_creator):
                     agent = agent_creator()
                     logger.debug("[session:%s] Agent instantiated: %s", session.session_id, agent_name)
+                    # Record primary model and get fallback from routing config
+                    _primary_model = agent.llm.model if agent and agent.llm else "groq/llama-3.3-70b-versatile"
+                    _primary_temp = agent.llm.temperature if agent and agent.llm else 0.1
+                    _, _fallback_model, _ = model_for_stage(agent_name)
+                    logger.debug("[routing] stage=%s primary=%s fallback=%s", task_name, _primary_model, _fallback_model)
+                    # Record primary model and get fallback from routing config
+                    _primary_model = agent.llm.model if agent and agent.llm else "groq/llama-3.3-70b-versatile"
+                    _primary_temp = agent.llm.temperature if agent and agent.llm else 0.1
+                    _, _fallback_model, _ = model_for_stage(agent_name)
+                    logger.debug("[routing] stage=%s primary=%s fallback=%s", task_name, _primary_model, _fallback_model)
+                    # Record primary model and get fallback from routing config
+                    _primary_model = agent.llm.model if agent and agent.llm else "groq/llama-3.3-70b-versatile"
+                    _primary_temp = agent.llm.temperature if agent and agent.llm else 0.1
+                    _, _fallback_model, _ = model_for_stage(agent_name)
+                    logger.debug("[routing] stage=%s primary=%s fallback=%s", task_name, _primary_model, _fallback_model)
                 else:
                     logger.warning(
                         "[session:%s] No @agent method found for name=%r on ProtoFlowCrew",
@@ -777,6 +810,30 @@ async def run_pipeline(session: PipelineSession) -> None:
                 break  # Success
             except Exception as e:
                 err_str = str(e)
+                # 5xx provider error -> switch to fallback model from routing config
+                is_5xx = any(code in err_str for code in ["500", "502", "503", "504"]) and "RateLimitError" not in type(e).__name__
+                if is_5xx and attempt == 0 and agent and agent.llm:
+                    _fb = _fallback_model if "_fallback_model" in dir() else model_for_stage(agent_name)[1]
+                    logger.warning("[routing] FALLBACK stage=%s primary=%s -> fallback=%s reason=5xx",
+                                   task_name, getattr(agent.llm, "model", "?"), _fb)
+                    agent.llm = LLM(model=_fb, temperature=_primary_temp if "_primary_temp" in dir() else 0.1)
+                    continue
+                # 5xx provider error -> switch to fallback model from routing config
+                is_5xx = any(code in err_str for code in ["500", "502", "503", "504"]) and "RateLimitError" not in type(e).__name__
+                if is_5xx and attempt == 0 and agent and agent.llm:
+                    _fb = _fallback_model if "_fallback_model" in dir() else model_for_stage(agent_name)[1]
+                    logger.warning("[routing] FALLBACK stage=%s primary=%s -> fallback=%s reason=5xx",
+                                   task_name, getattr(agent.llm, "model", "?"), _fb)
+                    agent.llm = LLM(model=_fb, temperature=_primary_temp if "_primary_temp" in dir() else 0.1)
+                    continue
+                # 5xx provider error -> switch to fallback model from routing config
+                is_5xx = any(code in err_str for code in ["500", "502", "503", "504"]) and "RateLimitError" not in type(e).__name__
+                if is_5xx and attempt == 0 and agent and agent.llm:
+                    _fb = _fallback_model if "_fallback_model" in dir() else model_for_stage(agent_name)[1]
+                    logger.warning("[routing] FALLBACK stage=%s primary=%s -> fallback=%s reason=5xx",
+                                   task_name, getattr(agent.llm, "model", "?"), _fb)
+                    agent.llm = LLM(model=_fb, temperature=_primary_temp if "_primary_temp" in dir() else 0.1)
+                    continue
                 if "RateLimitError" in type(e).__name__ or "rate_limit" in err_str.lower() or "rate limit reached" in err_str.lower():
                     if "Request too large" in err_str and "Limit" in err_str and "Requested" in err_str:
                         # Request is too large for the current model — fall back to the
@@ -845,13 +902,21 @@ async def run_pipeline(session: PipelineSession) -> None:
         if result is None:
             raise RuntimeError(f"Task '{task_name}' failed after {max_retries} retries due to rate limits or API errors.")
 
-        # Token extraction
+        # Token extraction and cost estimation
         if hasattr(result, 'token_usage'):
             usage = result.token_usage
             if hasattr(usage, 'total_tokens'):
                 session.total_tokens += usage.total_tokens
             elif isinstance(usage, dict):
                 session.total_tokens += usage.get('total_tokens', 0)
+        # Estimate cost using routing cost_table
+        if hasattr(result, 'token_usage') and result.token_usage:
+            usage = result.token_usage
+            _input_t = getattr(usage, 'prompt_tokens', 0) or (usage.get('prompt_tokens', 0) if isinstance(usage, dict) else 0)
+            _output_t = getattr(usage, 'completion_tokens', 0) or (usage.get('completion_tokens', 0) if isinstance(usage, dict) else 0)
+            _used_model = session.stage_models.get(task_name, "groq/llama-3.3-70b-versatile")
+            _cost = cost_for_tokens(_used_model, _input_t, _output_t)
+            session.stage_costs[task_name] = session.stage_costs.get(task_name, 0.0) + _cost
 
         raw = result.raw if hasattr(result, "raw") else str(result)
         logger.debug(

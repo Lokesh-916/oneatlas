@@ -38,6 +38,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from compiler.schemas.contracts import ClarifyRequest, ModifyRequest
 from compiler.crew import _sanitize_mermaid
+from compiler.tools.routing import routing_summary
 
 # ── Load .env before anything else ───────────────────────────────────────────
 load_dotenv()
@@ -444,6 +445,10 @@ async def result(session_id: str):
             # Groq llama-3.3-70b-versatile: ~$0.59/M tokens (input+output blended)
             # This is an approximation for cost vs quality tradeoff analysis.
             "estimated_cost_usd": round(session.total_tokens * 0.00000059, 6),
+            "stage_costs_usd": getattr(session, "stage_costs", {}),
+            "stage_models_used": getattr(session, "stage_models", {}),
+            "total_cost_usd": round(sum(getattr(session, "stage_costs", {}).values()), 6),
+            "routing_config": routing_summary(),
         },
     }
 

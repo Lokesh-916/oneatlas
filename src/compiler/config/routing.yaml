@@ -1,0 +1,86 @@
+# routing.yaml — OneAtlas AppSpec Engine Provider Routing Config
+# Maps each pipeline stage to primary + fallback model.
+# All model strings use LiteLLM provider/model format.
+# OpenRouter is the universal fallback on 429 or 5xx from any primary.
+# Edit this file to change models without touching pipeline code.
+
+providers:
+  groq:
+    api_key_env: GROQ_API_KEY
+  gemini:
+    api_key_env: GEMINI_API_KEY
+  openrouter:
+    api_key_env: OPENROUTER_API_KEY
+
+stages:
+  intent_extraction:
+    primary: "groq/llama-3.3-70b-versatile"
+    fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
+    temperature: 0.1
+
+  architecture_design:
+    primary: "groq/llama-3.3-70b-versatile"
+    fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
+    temperature: 0.2
+
+  db_schema:
+    primary: "groq/llama-3.3-70b-versatile"
+    fallback: "gemini/gemini-1.5-flash"
+    temperature: 0.2
+
+  api_schema:
+    primary: "groq/llama-3.3-70b-versatile"
+    fallback: "gemini/gemini-1.5-flash"
+    temperature: 0.2
+
+  ui_schema:
+    primary: "groq/llama-3.3-70b-versatile"
+    fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
+    temperature: 0.2
+
+  auth_schema:
+    primary: "groq/llama-3.3-70b-versatile"
+    fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
+    temperature: 0.2
+
+  validation:
+    primary: "groq/llama-3.3-70b-versatile"
+    fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
+    temperature: 0.1
+
+  repair:
+    primary: "groq/llama-3.3-70b-versatile"
+    fallback: "gemini/gemini-1.5-flash"
+    temperature: 0.2
+
+  workflow_stubs:
+    primary: "groq/llama-3.3-70b-versatile"
+    fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
+    temperature: 0.2
+
+  runtime_validation:
+    primary: "groq/llama-3.3-70b-versatile"
+    fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
+    temperature: 0.1
+
+  logging:
+    primary: "groq/llama-3.3-70b-versatile"
+    fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
+    temperature: 0.3
+
+# Per-token cost rates in USD.
+# Used to estimate cost per run logged in /result and eval metrics.
+# Rates are approximate — check provider pricing pages for exact values.
+cost_table:
+  "groq/llama-3.3-70b-versatile":
+    input: 0.00000059
+    output: 0.00000079
+  "gemini/gemini-1.5-flash":
+    input: 0.00000015
+    output: 0.00000060
+  "gemini/gemini-1.5-pro":
+    input: 0.00000350
+    output: 0.00001050
+  "openrouter/meta-llama/llama-3.3-70b-instruct":
+    input: 0.00000060
+    output: 0.00000080

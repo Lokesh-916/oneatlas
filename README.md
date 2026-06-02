@@ -169,3 +169,42 @@ Metrics tracked per run: `pipeline_completed`, `total_latency_ms`, `total_tokens
 | Provider routing config (Groq / Gemini / OpenRouter) | Implemented |
 | Integration HTTP calls (Slack API, Stripe API, etc.) | Stubbed — metadata correct, no live calls |
 | OAuth flows | Not implemented (out of scope per assignment) |
+
+---
+
+## Provider Routing
+
+Model selection is config-driven via `src/compiler/config/routing.yaml`.
+No model names are hardcoded in pipeline code.
+
+### Configured providers (3)
+
+| Provider | Use | API Key Env |
+|---|---|---|
+| **Groq** | Primary for all stages — low latency | `GROQ_API_KEY` |
+| **Gemini** | Schema + repair fallback — higher capability | `GEMINI_API_KEY` |
+| **OpenRouter** | Universal fallback on 429 or 5xx | `OPENROUTER_API_KEY` |
+
+### Routing decisions per stage
+
+| Stage | Primary | Fallback |
+|---|---|---|
+| `intent_extraction` | `groq/llama-3.3-70b-versatile` | `openrouter/meta-llama/llama-3.3-70b-instruct` |
+| `db_schema` | `groq/llama-3.3-70b-versatile` | `gemini/gemini-1.5-flash` |
+| `api_schema` | `groq/llama-3.3-70b-versatile` | `gemini/gemini-1.5-flash` |
+| `repair` | `groq/llama-3.3-70b-versatile` | `gemini/gemini-1.5-flash` (escalates tier) |
+| all others | `groq/llama-3.3-70b-versatile` | `openrouter/meta-llama/llama-3.3-70b-instruct` |
+
+### Fallback behaviour
+
+- **429 (rate limit):** existing key rotation + exponential backoff applies
+- **5xx (provider error):** immediately switches to fallback model from routing.yaml
+- All routing decisions logged: `[routing] FALLBACK stage=X primary=Y -> fallback=Z reason=5xx`
+
+### Cost tracking
+
+Every run logs per-stage cost estimates via a `COST_TABLE` in `routing.yaml`.
+Accessible in the `/result` response under `eval_metrics.stage_costs_usd`,
+`eval_metrics.total_cost_usd`, and `eval_metrics.stage_models_used`.
+
+To change any model, edit `routing.yaml` — no code changes required.
