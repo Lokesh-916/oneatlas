@@ -38,3 +38,16 @@ frontend/dist/
 
 # Root-level test scripts (one-off, not part of test suite)
 test_*.py
+# Temp build/test scripts
+*.cmd
+patch_*.py
+test_feature_*.py
+run_patch*.py
+*_stage.py
+*_out.txt
+*_err.txt
+check*.py
+fix_*.py
+squash_*.py
+cleanup_*.py
+atom*.py
