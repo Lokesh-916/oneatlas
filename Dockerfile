@@ -20,5 +20,5 @@ RUN uv sync --no-dev
 ENV PORT=7860
 EXPOSE 7860
 
-# Run the FastAPI application using Uvicorn
+# Run the OneAtlas AppSpec Engine API
 CMD ["uv", "run", "uvicorn", "compiler.main:app", "--host", "0.0.0.0", "--port", "7860"]

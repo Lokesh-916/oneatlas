@@ -1,7 +1,7 @@
 [project]
-name = "compiler"
+name = "oneatlas-appspec-engine"
 version = "0.1.0"
-description = "ProtoFlow â€” natural language to application schema compiler using crewAI"
+description = "OneAtlas AppSpec Engine — natural language to validated AppSpec compiler using crewAI"
 authors = [{ name = "Lokesh" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
