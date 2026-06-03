@@ -25,12 +25,12 @@ stages:
 
   db_schema:
     primary: "groq/llama-3.3-70b-versatile"
-    fallback: "gemini/gemini-1.5-flash"
+    fallback: "gemini/gemini-3.1-flash-lite"
     temperature: 0.2
 
   api_schema:
     primary: "groq/llama-3.3-70b-versatile"
-    fallback: "gemini/gemini-1.5-flash"
+    fallback: "gemini/gemini-3.1-flash-lite"
     temperature: 0.2
 
   ui_schema:
@@ -50,7 +50,7 @@ stages:
 
   repair:
     primary: "groq/llama-3.3-70b-versatile"
-    fallback: "gemini/gemini-1.5-flash"
+    fallback: "gemini/gemini-3.1-flash-lite"
     temperature: 0.2
 
   workflow_stubs:
@@ -75,7 +75,7 @@ cost_table:
   "groq/llama-3.3-70b-versatile":
     input: 0.00000059
     output: 0.00000079
-  "gemini/gemini-1.5-flash":
+  "gemini/gemini-3.1-flash-lite":
     input: 0.00000015
     output: 0.00000060
   "gemini/gemini-1.5-pro":

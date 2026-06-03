@@ -5,7 +5,7 @@ description = "OneAtlas AppSpec Engine - natural language to validated AppSpec c
 authors = [{ name = "Lokesh" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
-    "crewai[tools]==1.14.5",
+    "crewai[google-genai,tools]==1.14.5",
     "litellm>=1.83.7",
     "fastapi==0.115.12",
     "uvicorn[standard]==0.34.2",
