@@ -24,16 +24,23 @@ OneAtlas AppSpec Engine is built for reliability. The core challenge of AI-nativ
 ```mermaid
 flowchart LR
     A[Intent Extraction] --> B[Architecture Design]
-    B --> C[Schema Generation]
-    
-    subgraph C [Parallel Schema Generation]
+    subgraph Parallel Schema Generation
+        direction TB
         D(DB Schema)
         E(API Schema)
         F(UI Schema)
         G(Auth Schema)
     end
     
-    C --> H[Validation Engine]
+    B --> D
+    B --> E
+    B --> F
+    B --> G
+    
+    D --> H[Validation Engine]
+    E --> H
+    F --> H
+    G --> H
     
     H -- "Errors Found" --> I[Repair Loop]
     I -- "Fixed" --> H
