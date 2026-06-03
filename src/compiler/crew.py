@@ -135,6 +135,16 @@ GROQ_KEYS = list(set(GROQ_KEYS))
 if GROQ_KEYS:
     os.environ["GROQ_API_KEY"] = GROQ_KEYS[0]
 
+# Load all Gemini API keys (GEMINI_API_KEY, GEMINI_API_KEY_2, etc.) for rotation
+GEMINI_KEYS = []
+for _k, _v in os.environ.items():
+    if _k.startswith("GEMINI_API_KEY") and _v.strip():
+        GEMINI_KEYS.extend([key.strip() for key in _v.split(",") if key.strip()])
+GEMINI_KEYS = list(set(GEMINI_KEYS))
+if GEMINI_KEYS:
+    os.environ["GEMINI_API_KEY"] = GEMINI_KEYS[0]
+    logger.info("[startup] Loaded %d Gemini key(s) for rotation.", len(GEMINI_KEYS))
+
 
 # ── Schema compaction ─────────────────────────────────────────────────────────
 
@@ -917,7 +927,24 @@ async def run_pipeline(session: PipelineSession) -> None:
                     # If not a request size limit, it's a TPD limit or standard TPM timeout.
                     # Rotate API key if we have multiple keys available.
                     rotated = False
-                    if len(GROQ_KEYS) > 1:
+                    _current_model = getattr(getattr(agent, "llm", None), "model", "") if agent else ""
+                    _is_gemini_model = "gemini" in _current_model.lower()
+
+                    if _is_gemini_model and len(GEMINI_KEYS) > 1:
+                        # Rotate Gemini API key
+                        new_gemini_key = random.choice(GEMINI_KEYS)
+                        logger.warning(
+                            "[session:%s] Rate limit hit on Gemini for %s. Rotating GEMINI_API_KEY...",
+                            session.session_id, task_name
+                        )
+                        os.environ["GEMINI_API_KEY"] = new_gemini_key
+                        if agent and agent.llm:
+                            temp = agent.llm.temperature if hasattr(agent.llm, "temperature") else 0.2
+                            agent.llm = LLM(model=_current_model, temperature=temp, api_key=new_gemini_key)
+                        if attempt < len(GEMINI_KEYS):
+                            continue
+                        rotated = True
+                    elif not _is_gemini_model and len(GROQ_KEYS) > 1:
                         new_key = random.choice(GROQ_KEYS)
                         logger.warning(
                             "[session:%s] Rate limit / TPD hit for %s. Rotating to another GROQ_API_KEY...",
