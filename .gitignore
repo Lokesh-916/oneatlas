@@ -53,3 +53,6 @@ cleanup_*.py
 atom*.py
 
 verify.txt
+
+cleangh.txt
+cleangh.cmd
