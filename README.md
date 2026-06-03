@@ -1,3 +1,12 @@
+---
+title: OneAtlas AppSpec Engine
+emoji: 🚀
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # 🚀 OneAtlas AppSpec Engine
 
 ![OneAtlas Preview](./image.png)
