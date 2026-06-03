@@ -485,6 +485,35 @@ class ValidationReport(BaseModel):
 # Repair Report
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# Repair Strategy Classification (Feature F)
+# ---------------------------------------------------------------------------
+
+class RepairStrategy(str):
+    """Repair strategy label. One of: STRUCTURAL, FIELD, CONSISTENCY, ESCALATED."""
+    STRUCTURAL  = "STRUCTURAL"   # JSON parse failure, malformed/truncated output
+    FIELD       = "FIELD"        # Missing required field, wrong type
+    CONSISTENCY = "CONSISTENCY"  # Cross-layer reference mismatch
+    ESCALATED   = "ESCALATED"    # Unresolved errors after 2+ attempts -> HITL
+
+
+class RepairLogEntry(BaseModel):
+    """One repair attempt log entry — logged whether repair succeeded or failed."""
+    attempt_number: int = Field(description="Repair attempt number (1-indexed).")
+    strategy: str = Field(
+        description="Classified strategy: STRUCTURAL | FIELD | CONSISTENCY | ESCALATED."
+    )
+    error_input: str = Field(
+        description="The error description that triggered this repair attempt."
+    )
+    outcome: str = Field(
+        description="Result of this attempt: repaired | escalated | failed."
+    )
+    errors_before: int = Field(default=0, description="Number of errors before repair.")
+    errors_after: int = Field(default=0, description="Number of errors after repair.")
+
+
 class DiffEntry(BaseModel):
     """A single repair diff."""
 
@@ -514,6 +543,10 @@ class RepairReport(BaseModel):
     unresolved_errors: List[str] = Field(
         default_factory=list,
         description="Errors that could not be fixed automatically.",
+    )
+    repair_log: List[RepairLogEntry] = Field(
+        default_factory=list,
+        description="Per-attempt repair log with strategy, error, and outcome."
     )
 
 

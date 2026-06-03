@@ -138,7 +138,19 @@ def record_auto_metrics(
             "conflicts_count": conflicts_count,
             "confidence_scores": confidence_scores,
             "integrations_correctly_detected": _count_correct_integrations(session),
-            "workflow_stubs_generated": len(getattr(session, "workflow_stubs", None) or [])
+            "workflow_stubs_generated": len(getattr(session, "workflow_stubs", None) or []),
+            "repair_strategies_used": list(set(
+                entry.get("strategy", "UNKNOWN")
+                for entry in (getattr(session, "repair_log", None) or [])
+                if isinstance(entry, dict)
+            )),
+            "repair_log": getattr(session, "repair_log", []),
+            "repair_strategies_used": list(set(
+                entry.get("strategy", "UNKNOWN")
+                for entry in (getattr(session, "repair_log", None) or [])
+                if isinstance(entry, dict)
+            )),
+            "repair_log": getattr(session, "repair_log", [])
         },
         "human_judgment": None,
         "human_notes": None,

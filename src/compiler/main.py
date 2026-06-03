@@ -425,6 +425,7 @@ async def result(session_id: str):
         "workflow_stubs": [s.model_dump() if hasattr(s, "model_dump") else s for s in (getattr(session, "workflow_stubs", None) or [])],
         "integration_hooks": [h.model_dump() if hasattr(h, "model_dump") else h for h in (getattr(session, "integration_hooks", None) or [])],
         "app_spec": getattr(session, "app_spec", None),
+        "repair_log": getattr(session, "repair_log", []),
         "mermaid_diagrams": {
             "pipeline_flow": _sanitize_mermaid(
                 (session.log_output or {}).get("mermaid_pipeline", ""), "flowchart"

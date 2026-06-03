@@ -69,6 +69,59 @@ def _llm_for_agent(agent_name: str) -> "LLM":
     logger.debug("[routing] Agent %s -> model=%s temp=%s", agent_name, primary, temp)
     return LLM(model=primary, temperature=temp)
 
+def _classify_repair_strategy(errors: list, validation_report: dict, attempt: int) -> str:
+    """
+    Deterministic repair strategy classifier.
+    Returns one of: STRUCTURAL, FIELD, CONSISTENCY, ESCALATED.
+
+    Priority order:
+      1. ESCALATED  — attempt >= 2 with errors still present
+      2. STRUCTURAL — JSON parse failure indicators
+      3. CONSISTENCY — cross-layer reference keywords
+      4. FIELD      — everything else (missing/wrong field)
+    """
+    # ESCALATED: persistent errors after multiple attempts
+    if attempt >= 2 and errors:
+        return "ESCALATED"
+
+    # Combine all error descriptions into one lowercase string for pattern matching
+    all_errors = " ".join(
+        e.get("description", str(e)) if isinstance(e, dict) else str(e)
+        for e in errors
+    ).lower()
+
+    # Also check if the report itself indicates a parse failure (empty report)
+    is_empty_report = not validation_report or (
+        not validation_report.get("errors") and
+        not validation_report.get("warnings") and
+        not validation_report.get("validated_at")
+    )
+
+    # STRUCTURAL: JSON/parse/format failures
+    structural_keywords = [
+        "json", "parse", "malformed", "truncated", "invalid json",
+        "could not extract", "empty", "syntax error", "decode error",
+        "format", "missing json", "not valid"
+    ]
+    if is_empty_report or any(kw in all_errors for kw in structural_keywords):
+        return "STRUCTURAL"
+
+    # CONSISTENCY: cross-layer reference mismatches
+    consistency_keywords = [
+        "not found in", "references", "does not exist", "missing entity",
+        "missing table", "endpoint references", "page references",
+        "role not defined", "undefined role", "foreign key", "cross-layer",
+        "mismatch", "no corresponding", "no matching", "orphan",
+        "inconsistent", "referenced", "not in schema"
+    ]
+    if any(kw in all_errors for kw in consistency_keywords):
+        return "CONSISTENCY"
+
+    # FIELD: default for missing/wrong field type errors
+    return "FIELD"
+
+
+
 
 HITL_TIMEOUT_SECONDS = int(os.getenv("HITL_TIMEOUT_SECONDS", "300"))
 
@@ -452,6 +505,7 @@ class PipelineSession:
         self.app_spec: Optional[dict] = None
         self.stage_models: dict[str, str] = {}   # stage -> model actually used
         self.stage_costs: dict[str, float] = {}  # stage -> estimated USD cost
+        self.repair_log: list = []               # Feature F: per-attempt repair log
         self.log_output: Optional[dict] = None
 
         # Metrics
@@ -1687,6 +1741,39 @@ async def run_pipeline(session: PipelineSession) -> None:
             )
             session.repair_report = result
             session.repair_count += 1
+
+            # --- Feature F: classify repair strategy and log outcome ---
+            errors_before = len((session.validation_report or {}).get("errors", []))
+            strategy = _classify_repair_strategy(
+                errors=(session.validation_report or {}).get("errors", []),
+                validation_report=session.validation_report or {},
+                attempt=attempt,
+            )
+            unresolved = result.get("unresolved_errors", [])
+            errors_after = len(unresolved)
+            outcome = (
+                "escalated" if strategy == "ESCALATED"
+                else "repaired" if errors_after < errors_before
+                else "failed"
+            )
+            log_entry = {
+                "attempt_number": attempt,
+                "strategy": strategy,
+                "error_input": "; ".join(
+                    e.get("description", str(e)) if isinstance(e, dict) else str(e)
+                    for e in (session.validation_report or {}).get("errors", [])[:3]
+                ),
+                "outcome": outcome,
+                "errors_before": errors_before,
+                "errors_after": errors_after,
+            }
+            if not hasattr(session, "repair_log"):
+                session.repair_log = []
+            session.repair_log.append(log_entry)
+            logger.info(
+                "[session:%s] Repair attempt=%d strategy=%s outcome=%s errors=%d->%d",
+                session.session_id, attempt, strategy, outcome, errors_before, errors_after,
+            )
             logger.info(
                 "[session:%s] Repair complete. repairs=%d unresolved=%d",
                 session.session_id,
@@ -1954,6 +2041,7 @@ async def run_pipeline(session: PipelineSession) -> None:
         "workflow_stubs": [s.model_dump() if hasattr(s, "model_dump") else s for s in (session.workflow_stubs or [])],
         "integration_hooks": [h.model_dump() if hasattr(h, "model_dump") else h for h in (session.integration_hooks or [])],
         "app_spec": session.app_spec,
+        "repair_log": getattr(session, "repair_log", []),
     }
 
     from compiler.schemas.contracts import FinalOutput
