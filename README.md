@@ -1,15 +1,6 @@
----
-title: OneAtlas AppSpec Engine
-emoji: 🚀
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-pinned: false
----
-
 # 🚀 OneAtlas AppSpec Engine
 
-![OneAtlas Preview](image.png)
+![OneAtlas Preview](./image.png)
 
 > **AI Engineer — 3-Day Trial Task** (June 2026)  
 > *A multi-stage AI compilation pipeline that converts a natural language app description into a structured, validated AppSpec.*
@@ -31,7 +22,7 @@ OneAtlas AppSpec Engine is built for reliability. The core challenge of AI-nativ
 ## 🏗️ Architecture & Pipeline
 
 ```mermaid
-flowchart TD
+flowchart LR
     A[Intent Extraction] --> B[Architecture Design]
     B --> C[Schema Generation]
     
@@ -81,20 +72,7 @@ npm install
 npm run dev
 ```
 
----
 
-## 🔑 Environment Variables
-
-The engine uses multiple API keys to auto-rotate during rate limits. You can supply them as single variables or comma-separated lists (e.g., `GROQ_API_KEY=key1,key2`).
-
-| Variable | Required | Description |
-|---|:---:|---|
-| `GROQ_API_KEY` | ✅ | Primary lightning-fast LLM for all standard stages. |
-| `GEMINI_API_KEY` | ❌ | Fallback model for schema generation and structural repairs. |
-| `GEMINI_API_KEY_2` | ❌ | Auto-rotated if the primary Gemini key hits a 429 rate limit. |
-| `OPENROUTER_API_KEY` | ❌ | Universal fallback for deep outages. |
-
----
 
 ## 🛠️ The Repair Engine
 
