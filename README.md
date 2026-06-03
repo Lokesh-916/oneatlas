@@ -26,6 +26,7 @@ cd frontend && npm install && npm run dev
 |---|---|---|
 | `GROQ_API_KEY` | Yes | Primary LLM for all stages |
 | `GEMINI_API_KEY` | No | Schema/repair fallback (use GEMINI_API_KEY not GOOGLE_API_KEY) |
+| `GEMINI_API_KEY_2` | No | Second Gemini key — auto-rotated on 429 rate limits |
 | `OPENROUTER_API_KEY` | No | Universal fallback on 429/5xx |
 
 ---
