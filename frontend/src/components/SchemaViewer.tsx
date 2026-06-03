@@ -1,111 +1,39 @@
 import { useState } from "react";
-
-interface SchemaViewerProps {
-  data: unknown;
-  title?: string;
-}
-
-function JsonNode({ value, depth = 0 }: { value: unknown; depth?: number }) {
-  const [collapsed, setCollapsed] = useState(depth > 2);
-  const indent = depth * 16;
-
-  if (value === null) return <span className="text-canvas-500">null</span>;
-  if (typeof value === "boolean") return <span className="text-yellow-400">{String(value)}</span>;
-  if (typeof value === "number") return <span className="text-blue-400">{value}</span>;
-  if (typeof value === "string") return <span className="text-green-400">"{value}"</span>;
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) return <span className="text-canvas-500">[]</span>;
-    return (
-      <span>
-        <button onClick={() => setCollapsed(!collapsed)} className="text-canvas-400 hover:text-white">
-          {collapsed ? `[…${value.length}]` : "["}
-        </button>
-        {!collapsed && (
-          <div style={{ marginLeft: indent + 16 }}>
-            {value.map((item, i) => (
-              <div key={i}>
-                <JsonNode value={item} depth={depth + 1} />
-                {i < value.length - 1 && <span className="text-canvas-600">,</span>}
-              </div>
-            ))}
-            <div style={{ marginLeft: -16 }}>]</div>
-          </div>
-        )}
-      </span>
-    );
+interface Props { data: unknown; title?: string; }
+function JNode({ v, d=0 }: { v:unknown; d?:number }) {
+  const [c,setC]=useState(d>2);
+  const pad=d*12;
+  if(v===null) return <span className="text-ink-400">null</span>;
+  if(typeof v==="boolean") return <span className="text-amber-700">{String(v)}</span>;
+  if(typeof v==="number") return <span className="text-accent-600">{v}</span>;
+  if(typeof v==="string") return <span className="text-green-700">"{v}"</span>;
+  if(Array.isArray(v)) {
+    if(!v.length) return <span className="text-ink-400">[]</span>;
+    return <span><button onClick={()=>setC(!c)} className="text-ink-500 hover:text-ink-800">{c?[…]:"["}</button>
+      {!c&&<div style={{marginLeft:pad+12}}>{v.map((x,i)=><div key={i}><JNode v={x} d={d+1}/>{i<v.length-1&&<span className="text-ink-300">,</span>}</div>)}<div style={{marginLeft:-12}}>]</div></div>}</span>;
   }
-
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length === 0) return <span className="text-canvas-500">{"{}"}</span>;
-    return (
-      <span>
-        <button onClick={() => setCollapsed(!collapsed)} className="text-canvas-400 hover:text-white">
-          {collapsed ? `{…${entries.length}}` : "{"}
-        </button>
-        {!collapsed && (
-          <div style={{ marginLeft: indent + 16 }}>
-            {entries.map(([k, v], i) => (
-              <div key={k}>
-                <span className="text-purple-400">"{k}"</span>
-                <span className="text-canvas-500">: </span>
-                <JsonNode value={v} depth={depth + 1} />
-                {i < entries.length - 1 && <span className="text-canvas-600">,</span>}
-              </div>
-            ))}
-            <div style={{ marginLeft: -16 }}>{"}"}</div>
-          </div>
-        )}
-      </span>
-    );
+  if(typeof v==="object") {
+    const e=Object.entries(v as Record<string,unknown>);
+    if(!e.length) return <span className="text-ink-400">{"{}"}</span>;
+    return <span><button onClick={()=>setC(!c)} className="text-ink-500 hover:text-ink-800">{c?{…}:"{"}</button>
+      {!c&&<div style={{marginLeft:pad+12}}>{e.map(([k,x],i)=><div key={k}><span className="text-accent-600">"{k}"</span><span className="text-ink-400">: </span><JNode v={x} d={d+1}/>{i<e.length-1&&<span className="text-ink-300">,</span>}</div>)}<div style={{marginLeft:-12}}>{"}"}</div></div>}</span>;
   }
-
-  return <span className="text-canvas-300">{String(value)}</span>;
+  return <span className="text-ink-700">{String(v)}</span>;
 }
-
-export default function SchemaViewer({ data, title }: SchemaViewerProps) {
-  const [raw, setRaw] = useState(false);
-
-  const jsonStr = JSON.stringify(data, null, 2);
-
-  const handleDownload = () => {
-    const blob = new Blob([jsonStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${title ?? "schema"}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
+export default function SchemaViewer({ data, title }: Props) {
+  const [raw,setRaw]=useState(false);
+  const json=JSON.stringify(data,null,2);
   return (
-    <div className="rounded-lg border border-canvas-800 bg-canvas-900 overflow-hidden">
-      {title && (
-        <div className="flex items-center justify-between px-4 py-2 border-b border-canvas-800">
-          <span className="text-sm font-medium text-canvas-300">{title}</span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setRaw(!raw)}
-              className="text-xs text-canvas-500 hover:text-canvas-300 px-2 py-1 rounded hover:bg-canvas-800"
-            >
-              {raw ? "Tree" : "Raw"}
-            </button>
-            <button
-              onClick={handleDownload}
-              className="text-xs text-canvas-500 hover:text-canvas-300 px-2 py-1 rounded hover:bg-canvas-800"
-            >
-              ↓ JSON
-            </button>
-          </div>
+    <div className="card overflow-hidden">
+      {title && <div className="flex items-center justify-between px-4 py-2.5 border-b border-ink-100">
+        <span className="text-sm font-medium text-ink-800">{title}</span>
+        <div className="flex gap-2">
+          <button onClick={()=>setRaw(!raw)} className="text-xs text-ink-500 hover:text-ink-800 px-2 py-1 rounded hover:bg-ink-100">{raw?"Tree":"Raw"}</button>
+          <button onClick={()=>{const b=new Blob([json],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=${title}.json;a.click();URL.revokeObjectURL(u);}} className="text-xs text-ink-500 hover:text-ink-800 px-2 py-1 rounded hover:bg-ink-100">↓ JSON</button>
         </div>
-      )}
+      </div>}
       <div className="p-4 overflow-auto max-h-[600px] font-mono text-xs">
-        {raw ? (
-          <pre className="text-canvas-300 whitespace-pre-wrap break-all">{jsonStr}</pre>
-        ) : (
-          <JsonNode value={data} depth={0} />
-        )}
+        {raw?<pre className="text-ink-700 whitespace-pre-wrap break-all">{json}</pre>:<JNode v={data} d={0}/>}
       </div>
     </div>
   );

@@ -1,135 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
-
-mermaid.initialize({
-  startOnLoad: false,
-  theme: "dark",
-  themeVariables: {
-    background: "#111827",
-    primaryColor: "#6366f1",
-    primaryTextColor: "#f3f4f6",
-    lineColor: "#4b5563",
-    edgeLabelBackground: "#1f2937",
-  },
-});
-
-interface MermaidDiagramProps {
-  title: string;
-  source: string;
+mermaid.initialize({ startOnLoad:false, theme:"neutral", themeVariables:{ primaryColor:"#e8f0f7", primaryTextColor:"#16140f", lineColor:"#9e9a8e", edgeLabelBackground:"#f0efe9" } });
+let _id=0;
+function clean(s:string):string {
+  if(!s) return s;
+  let r=s.replace(/\\n/g,"\n").replace(/(\|[^|]*\|)>/g,"");
+  if(r.includes("erDiagram")||r.includes("sequenceDiagram")) r=r.split("\n").filter(l=>{const t=l.trim();return !(t.startsWith("style ")&&(t.includes("fill:")||t.includes("stroke:")));}).join("\n");
+  return r;
 }
-
-let _idCounter = 0;
-
-/** Client-side sanitizer that mirrors the backend _sanitize_mermaid() logic.
- *  Catches any diagrams that slipped through (e.g., cached /result payloads). */
-function sanitizeMermaid(source: string): string {
-  if (!source) return source;
-  // Normalise escaped newlines
-  let s = source.replace(/\\n/g, "\n");
-  // Fix -->|label|> → -->|label|
-  s = s.replace(/(\|[^|]*\|)>/g, "$1");
-  // Strip `style X fill:...` from erDiagram / sequenceDiagram
-  if (s.includes("erDiagram") || s.includes("sequenceDiagram")) {
-    s = s
-      .split("\n")
-      .filter((line) => {
-        const t = line.trim();
-        return !(t.startsWith("style ") && (t.includes("fill:") || t.includes("stroke:")));
-      })
-      .join("\n");
-  }
-  return s;
-}
-
-export default function MermaidDiagram({ title, source }: MermaidDiagramProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showSource, setShowSource] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const idRef = useRef(`mermaid-${++_idCounter}`);
-
-  useEffect(() => {
-    if (!source || !containerRef.current) return;
-    setError(null);
-
-    const clean = sanitizeMermaid(source);
-    console.log("[MermaidDiagram] Rendering:", title, "length:", clean.length);
-
-    mermaid.render(idRef.current, clean)
-      .then(({ svg }) => {
-        if (containerRef.current) {
-          containerRef.current.innerHTML = svg;
-        }
-      })
-      .catch((err) => {
-        console.error("[MermaidDiagram] Render error for", title, ":", err);
-        setError(`${err.message ?? err}`);
-      });
-  }, [source, title]);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(source).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  if (!source) {
-    return (
-      <div className="rounded-lg border border-canvas-800 bg-canvas-900 p-6 text-center text-canvas-600 text-sm">
-        {title} — not yet generated
-      </div>
-    );
-  }
-
+interface Props { title:string; source:string; }
+export default function MermaidDiagram({title,source}:Props) {
+  const ref=useRef<HTMLDivElement>(null);
+  const [err,setErr]=useState<string|null>(null);
+  const [show,setShow]=useState(false);
+  const id=useRef(m);
+  useEffect(()=>{ if(!source||!ref.current) return; setErr(null);
+    mermaid.render(id.current,clean(source)).then(({svg})=>{ if(ref.current) ref.current.innerHTML=svg; }).catch(e=>setErr(String(e.message??e)));
+  },[source]);
+  if(!source) return <div className="card p-6 text-center text-xs text-ink-400 font-mono">{title} — not generated</div>;
   return (
-    <div className="rounded-lg border border-canvas-800 bg-canvas-900 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-canvas-800">
-        <span className="text-sm font-medium text-canvas-300">{title}</span>
-        <div className="flex items-center gap-2">
-          {error && (
-            <button
-              onClick={() => setShowSource((v) => !v)}
-              className="text-xs text-amber-500 hover:text-amber-300 transition-colors px-2 py-1 rounded hover:bg-canvas-800"
-            >
-              {showSource ? "Hide source" : "Show source"}
-            </button>
-          )}
-          <button
-            onClick={handleCopy}
-            className="text-xs text-canvas-500 hover:text-canvas-300 transition-colors px-2 py-1 rounded hover:bg-canvas-800"
-          >
-            {copied ? "✓ Copied" : "Copy Mermaid Source"}
-          </button>
+    <div className="card overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-ink-100">
+        <span className="text-xs font-mono font-medium text-ink-600">{title}</span>
+        <div className="flex gap-2">
+          {err && <button onClick={()=>setShow(v=>!v)} className="text-xs text-amber-600 hover:text-amber-800">{show?"hide":"show source"}</button>}
+          <button onClick={()=>navigator.clipboard.writeText(source)} className="text-xs text-ink-400 hover:text-ink-700">copy</button>
         </div>
       </div>
-
-      {error ? (
-        <div className="p-4">
-          <p className="text-amber-400 text-xs mb-2">
-            ⚠ Diagram parse error — copy the source and paste into{" "}
-            <a
-              href="https://mermaid.live"
-              target="_blank"
-              rel="noreferrer"
-              className="underline hover:text-amber-300"
-            >
-              mermaid.live
-            </a>{" "}
-            to debug.
-          </p>
-          {showSource && (
-            <pre className="text-canvas-500 text-xs font-mono whitespace-pre-wrap break-all bg-canvas-950 rounded p-3 max-h-64 overflow-y-auto">
-              {source.replace(/\\n/g, "\n")}
-            </pre>
-          )}
-        </div>
-      ) : (
-        <div
-          ref={containerRef}
-          className="p-4 overflow-x-auto flex justify-center [&>svg]:max-w-full"
-        />
-      )}
+      {err ? <div className="p-4 space-y-2">{show&&<pre className="text-xs font-mono text-ink-500 bg-ink-50 p-3 rounded overflow-auto max-h-48">{source.replace(/\\n/g,"\n")}</pre>}</div>
+           : <div ref={ref} className="p-4 overflow-x-auto flex justify-center [&>svg]:max-w-full" />}
     </div>
   );
 }

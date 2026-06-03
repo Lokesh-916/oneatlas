@@ -1,49 +1,23 @@
 import { useEffect, useRef } from "react";
-import { Terminal } from "lucide-react";
-
-interface LogViewerProps {
-  entries: string[];
-}
-
-export default function LogViewer({ entries }: LogViewerProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [entries.length]);
-
-  if (entries.length === 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center gap-3 text-canvas-700">
-        <Terminal className="w-8 h-8" />
-        <span className="text-sm font-mono">Waiting for pipeline to start…</span>
-      </div>
-    );
-  }
-
+interface Props { entries: string[]; }
+export default function LogViewer({ entries }: Props) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { ref.current?.scrollIntoView({ behavior: "smooth" }); }, [entries.length]);
+  if (!entries.length) return (
+    <div className="h-full flex items-center justify-center text-ink-400 text-xs font-mono">
+      waiting for pipeline...
+    </div>
+  );
   return (
-    <div className="h-full overflow-y-auto font-mono text-xs leading-relaxed p-4 space-y-0.5">
-      {entries.map((entry, i) => {
-        const isHeader  = entry.startsWith("#");
-        const isError   = /error|failed|exception/i.test(entry);
-        const isWarn    = /warn|repair|conflict/i.test(entry);
-        const isSuccess = /complete|valid|success/i.test(entry);
-        const isStage   = /^\[stage|^\[session/i.test(entry);
-
-        const cls = isHeader  ? "text-indigo-400 font-semibold mt-2"
-          : isError   ? "text-red-400"
-          : isWarn    ? "text-orange-400"
-          : isSuccess ? "text-green-400"
-          : isStage   ? "text-blue-400"
-          : "text-canvas-500";
-
-        return (
-          <div key={i} className={cls}>
-            {entry}
-          </div>
-        );
+    <div className="h-full overflow-y-auto font-mono text-xs leading-5 p-4 space-y-px">
+      {entries.map((e, i) => {
+        const isErr = /error|failed/i.test(e);
+        const isWarn = /warn|repair|conflict/i.test(e);
+        const isOk = /complete|valid|success/i.test(e);
+        const cls = isErr ? "text-red-600" : isWarn ? "text-amber-700" : isOk ? "text-green-700" : "text-ink-500";
+        return <div key={i} className={cls}>{e}</div>;
       })}
-      <div ref={bottomRef} />
+      <div ref={ref} />
     </div>
   );
 }
