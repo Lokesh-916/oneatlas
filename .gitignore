@@ -61,3 +61,10 @@ last.txt
 last.cmd
 st.txt
 st.cmd
+
+x.txt
+x.cmd
+
+# Single-char temp output files
+?.txt
+?.cmd
