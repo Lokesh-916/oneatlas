@@ -345,9 +345,57 @@ async def clarify(req: ClarifyRequest):
     return ClarifyResponse(status="resumed")
 
 
+class RepairRequest(BaseModel):
+    stage: str
+    error_hint: str = ""
+
+
+class RepairResponse(BaseModel):
+    status: str
+    session_id: str
+    repair_attempt: int
+
+
 class ModifyResponse(BaseModel):
     status: str
     message: str
+
+
+
+@app.post("/generate/{session_id}/repair", response_model=RepairResponse)
+async def manual_repair(session_id: str, req: RepairRequest):
+    """
+    Manually trigger a repair pass on a specific stage output.
+    Accepts { stage, error_hint } — useful for testing the repair engine directly.
+    Injects the error_hint into the repair task as an additional validation error
+    and re-runs the repair stage. Does not restart the full pipeline.
+    """
+    session = await _get_session(session_id)
+
+    if not session.validation_report:
+        raise HTTPException(
+            status_code=422,
+            detail="No validation report available. Run the pipeline first."
+        )
+
+    # Build a synthetic error from the hint and inject it into the repair loop
+    hint_error = {"layer": req.stage, "field": "manual", "description": req.error_hint or f"Manual repair triggered for stage: {req.stage}"}
+    existing_errors = (session.validation_report or {}).get("errors", [])
+    if req.error_hint:
+        existing_errors = existing_errors + [hint_error]
+        session.validation_report["errors"] = existing_errors
+
+    logger.info("[manual_repair] session=%s stage=%s hint=%r", session_id, req.stage, req.error_hint)
+
+    # Fire repair stage as a background task
+    asyncio.create_task(_run_pipeline_safe(session))
+
+    return RepairResponse(
+        status="repair_queued",
+        session_id=session_id,
+        repair_attempt=session.repair_count + 1,
+    )
+
 
 
 @app.post("/modify", response_model=ModifyResponse)

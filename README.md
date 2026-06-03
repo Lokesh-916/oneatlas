@@ -208,3 +208,79 @@ Accessible in the `/result` response under `eval_metrics.stage_costs_usd`,
 `eval_metrics.total_cost_usd`, and `eval_metrics.stage_models_used`.
 
 To change any model, edit `routing.yaml` — no code changes required.
+
+---
+
+## Completed Features
+
+| Feature | Status | Description |
+|---|---|---|
+| **A — Integration Registry** | Complete | 10 integrations (5 impl + 5 stubbed), `GET /integrations` |
+| **B — Workflow Stubs** | Complete | Hybrid deterministic+LLM generation, registry-validated |
+| **C — Integration Hooks** | Complete | Normalized, deduplicated by hook_id, deterministic |
+| **D — Unified AppSpec** | Complete | Assembly from validated outputs, zero LLM calls, additive |
+| **E — Provider Routing** | Complete | routing.yaml, 3 providers, COST_TABLE, fallback on 5xx |
+| **F — Repair Classification** | Complete | STRUCTURAL/FIELD/CONSISTENCY/ESCALATED, per-attempt log |
+| **G — Missing APIs** | Complete | `GET /integrations`, `POST /generate/{id}/repair` |
+| **H — Evaluation** | Complete | 12 assignment prompts + `GET /eval/assignment-prompts` |
+
+---
+
+## API Reference (complete)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/generate` | Start pipeline, returns `session_id` |
+| GET | `/stream/{id}` | SSE stream with replay on reconnect |
+| POST | `/clarify` | Submit HITL answers |
+| POST | `/modify` | Midway prompt modification |
+| GET | `/result/{id}` | Full output: all schemas + `app_spec` + `repair_log` + routing metadata |
+| GET | `/integrations` | Full integration registry (Feature A/G) |
+| POST | `/generate/{id}/repair` | Manual repair trigger with `stage` + `error_hint` (Feature G) |
+| GET | `/health` | Health check |
+| GET | `/eval/prompts` | 20 standard eval prompts |
+| GET | `/eval/assignment-prompts` | 12 required assignment prompts (Feature H) |
+| POST | `/eval/run/{id}` | Run eval prompt (skip_hitl=True) |
+| POST | `/eval/record/{id}` | Save human judgment |
+| GET | `/eval/results` | Aggregated metrics |
+| GET | `/eval/export` | Download eval_results.json |
+
+---
+
+## Repair Strategy Classification
+
+Every repair attempt is classified and logged in `repair_log[]`, accessible via `/result`:
+
+```json
+{
+  "repair_log": [
+    {
+      "attempt_number": 1,
+      "strategy": "CONSISTENCY",
+      "error_input": "Page /deals references entity Deal which does not exist in schema",
+      "outcome": "repaired",
+      "errors_before": 2,
+      "errors_after": 0
+    }
+  ]
+}
+```
+
+| Strategy | Trigger |
+|---|---|
+| `STRUCTURAL` | JSON parse failure, empty/malformed output |
+| `FIELD` | Missing required field, wrong type |
+| `CONSISTENCY` | Cross-layer reference mismatch |
+| `ESCALATED` | 2+ failed attempts, routed to HITL |
+
+---
+
+## Evaluation Dataset
+
+**Standard prompts** (`/eval/prompts`): 20 prompts with expected behavior and known challenges
+
+**Assignment prompts** (`/eval/assignment-prompts`): 12 required prompts from the trial spec:
+- 7 real product prompts (CRM, task manager, inventory, HR, e-commerce, events, project tracker)
+- 5 edge cases (minimal, ambiguous, overscoped, conflicting domain, vague modifier)
+
+Each run tracked with: `pipeline_completed`, `latency_ms`, `tokens`, `repair_count`, `repair_strategies_used`, `integrations_correctly_detected`, `workflow_stubs_generated`, `human_judgment`.

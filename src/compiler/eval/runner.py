@@ -21,6 +21,7 @@ eval_router = APIRouter(prefix="/eval")
 
 # Path to prompts.json
 PROMPTS_PATH = os.path.join(os.path.dirname(__file__), "prompts.json")
+ASSIGNMENT_PROMPTS_PATH = os.path.join(os.path.dirname(__file__), "assignment_prompts.json")
 
 # Request Models
 class RecordJudgmentRequest(BaseModel):
@@ -308,3 +309,24 @@ async def export_results():
         media_type="application/json",
         filename="eval_results.json"
     )
+
+
+@eval_router.get("/assignment-prompts")
+async def get_assignment_prompts():
+    """
+    Returns the 12 required OneAtlas assignment evaluation prompts.
+    These are the exact prompts from the trial task specification.
+    Run via POST /eval/run/{id} where id is 1-12.
+    """
+    if not os.path.exists(ASSIGNMENT_PROMPTS_PATH):
+        raise HTTPException(status_code=404, detail="assignment_prompts.json not found.")
+    try:
+        with open(ASSIGNMENT_PROMPTS_PATH, "r", encoding="utf-8") as f:
+            prompts = json.load(f)
+        return {
+            "prompts": prompts,
+            "total": len(prompts),
+            "note": "These are the 12 required prompts from the OneAtlas trial task specification."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load assignment prompts: {e}")
