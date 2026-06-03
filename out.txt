@@ -1,8 +1,0 @@
-[master f49db3f] chore: catch-all temp file gitignore patterns
- 1 file changed, 7 insertions(+)
-To https://github.com/Lokesh-916/oneatlas.git
-   f5b686f..f49db3f  master -> master
-?? out.txt
-f49db3f chore: catch-all temp file gitignore patterns
-f5b686f chore: add temp file patterns to gitignore
-21d6255 chore: final gitignore update
