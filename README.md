@@ -1,3 +1,11 @@
+---
+title: OneAtlas AppSpec Engine
+emoji: 🚀
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
 # OneAtlas AppSpec Engine
 
 A multi-stage AI compilation pipeline that converts a natural language app description

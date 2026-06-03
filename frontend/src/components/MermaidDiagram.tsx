@@ -13,7 +13,7 @@ export default function MermaidDiagram({title,source}:Props) {
   const ref=useRef<HTMLDivElement>(null);
   const [err,setErr]=useState<string|null>(null);
   const [show,setShow]=useState(false);
-  const id=useRef(m);
+  const id=useRef(`mermaid_${++_id}`);
   useEffect(()=>{ if(!source||!ref.current) return; setErr(null);
     mermaid.render(id.current,clean(source)).then(({svg})=>{ if(ref.current) ref.current.innerHTML=svg; }).catch(e=>setErr(String(e.message??e)));
   },[source]);
@@ -28,7 +28,7 @@ export default function MermaidDiagram({title,source}:Props) {
         </div>
       </div>
       {err ? <div className="p-4 space-y-2">{show&&<pre className="text-xs font-mono text-ink-500 bg-ink-50 p-3 rounded overflow-auto max-h-48">{source.replace(/\\n/g,"\n")}</pre>}</div>
-           : <div ref={ref} className="p-4 overflow-x-auto flex justify-center [&>svg]:max-w-full" />}
+           : <div ref={ref} className="p-4 overflow-x-auto flex justify-center" />}
     </div>
   );
 }

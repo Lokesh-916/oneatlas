@@ -12,7 +12,7 @@ export default function PipelineProgress({ stages, onViewResults, complete }: Pr
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <div className="flex-1 h-0.5 bg-ink-100 rounded-full overflow-hidden">
-          <div className="h-full bg-accent-500 transition-all duration-500" style={{width:${pct}%}} />
+          <div className="h-full bg-accent-500 transition-all duration-500" style={{width:`${pct}%`}} />
         </div>
         <span className="text-xs font-mono text-ink-400">{done}/{STAGE_ORDER.length}</span>
       </div>

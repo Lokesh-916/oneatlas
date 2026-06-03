@@ -25,15 +25,15 @@ const LABEL_CLS: Record<StageStatus, string> = {
   hitl_required: "text-amber-700",
 };
 
-export default function StageCard({ label, model, status, latencyMs, outputSummary, assumptions=[], conflicts=[], repaired }: Props) {
+export default function StageCard({ label, status, latencyMs, outputSummary, assumptions=[], conflicts=[], repaired }: Props) {
   const [open, setOpen] = useState(false);
   const hasExtra = assumptions.length > 0 || conflicts.length > 0 || !!outputSummary;
 
   return (
-    <div className={order-l-2 pl-4 py-1.5 }>
+    <div className={`border-l-2 pl-4 py-1.5 ${status === 'complete' ? 'border-green-500' : status === 'failed' ? 'border-red-500' : status === 'repair_triggered' ? 'border-amber-500' : 'border-ink-200'}`}>
       <div className="flex items-center gap-2.5">
-        <span className={w-2 h-2 rounded-full flex-shrink-0 } />
-        <span className={	ext-sm flex-1 }>{label}</span>
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${DOT[status]}`} />
+        <span className={`text-sm flex-1 ${LABEL_CLS[status]}`}>{label}</span>
         {repaired && <span className="text-[10px] font-mono bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded">repaired</span>}
         {status === "hitl_required" && <span className="text-[10px] font-mono bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded">awaiting input</span>}
         {status === "complete" && latencyMs && <span className="text-[10px] font-mono text-ink-400">{latencyMs}ms</span>}

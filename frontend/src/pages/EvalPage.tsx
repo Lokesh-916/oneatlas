@@ -17,7 +17,7 @@ export default function EvalPage() {
 
   const load = async () => {
     try {
-      const [pr, rr] = await Promise.all([fetch(${BASE}/eval/prompts), fetch(${BASE}/eval/results)]);
+      const [pr, rr] = await Promise.all([fetch(`${BASE}/eval/prompts`), fetch(`${BASE}/eval/results`)]);
       const pd = await pr.json(); const rd = await rr.json();
       setPrompts(pd.prompts); setSummary(rd.summary); setLoading(false);
     } catch { setLoading(false); }
@@ -27,10 +27,10 @@ export default function EvalPage() {
 
   const run = async (id:number) => {
     setRunStatus(p => ({...p,[id]:"running"}));
-    const r = await fetch(${BASE}/eval/run/, {method:"POST"});
+    const r = await fetch(`${BASE}/eval/run/`, {method:"POST"});
     if (!r.ok) { setRunStatus(p => ({...p,[id]:"failed"})); return; }
-    const {session_id} = await r.json();
-    const sse = new EventSource(${BASE}/stream/);
+    await r.json();
+    const sse = new EventSource(`${BASE}/stream/`);
     activeSse.current = sse;
     sse.addEventListener("pipeline_complete", () => { sse.close(); setRunStatus(p => ({...p,[id]:"complete"})); load(); });
     sse.addEventListener("pipeline_failed", () => { sse.close(); setRunStatus(p => ({...p,[id]:"failed"})); load(); });
@@ -42,14 +42,14 @@ export default function EvalPage() {
 
   return (
     <div className="min-h-screen bg-ink-50">
-      <header className="border-b border-ink-200 bg-white px-6 py-3 flex items-center justify-between sticky top-0 z-10">
+      <header className="border-b border-ink-200 bg-ink-100 px-6 py-3 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-2">
           <button onClick={() => navigate("/")} className="text-xs font-mono text-ink-400 hover:text-ink-800">AppSpec</button>
           <span className="text-ink-300">/</span>
           <span className="text-xs font-mono text-ink-700">eval</span>
         </div>
         <div className="flex items-center gap-3">
-          <a href={${BASE}/eval/export} target="_blank" rel="noreferrer" className="btn-ghost text-xs py-1.5 px-3">Export</a>
+          <a href={`${BASE}/eval/export`} target="_blank" rel="noreferrer" className="btn-ghost text-xs py-1.5 px-3">Export</a>
           <button onClick={load} className="btn-ghost text-xs py-1.5 px-3">Refresh</button>
         </div>
       </header>
@@ -59,9 +59,9 @@ export default function EvalPage() {
         {summary && (
           <div className="grid grid-cols-4 gap-3">
             {[
-              {k:"Prompts run", v:${summary.total_run}},
-              {k:"Pass rate", v:${Math.round((summary.pass_rate??0)*100)}%},
-              {k:"Avg latency", v:${((summary.avg_latency_ms??0)/1000).toFixed(1)}s},
+              {k:"Prompts run", v:`${summary.total_run}`},
+              {k:"Pass rate", v:`${Math.round((summary.pass_rate??0)*100)}%`},
+              {k:"Avg latency", v:`${((summary.avg_latency_ms??0)/1000).toFixed(1)}s`},
               {k:"Avg tokens", v:Math.round(summary.avg_tokens??0).toLocaleString()},
             ].map(c => (
               <div key={c.k} className="card px-4 py-3">
@@ -92,11 +92,11 @@ export default function EvalPage() {
                 const STATUS_CLS:Record<string,string> = { not_run:"text-ink-300", running:"text-accent-600", complete:j==="pass"?"text-green-700":j==="fail"?"text-red-600":"text-ink-500", failed:"text-red-600" };
                 return (
                   <>
-                    <tr key={p.id} className={order-b border-ink-100 hover:bg-ink-50 cursor-pointer } onClick={()=>setExpanded(prev=>({...prev,[p.id]:!prev[p.id]}))}>
+                    <tr key={p.id} className="border-b border-ink-100 hover:bg-ink-50 cursor-pointer" onClick={()=>setExpanded(prev=>({...prev,[p.id]:!prev[p.id]}))}>
                       <td className="py-3 px-4 font-mono text-xs text-ink-400">{p.id}</td>
                       <td className="py-3 px-3 text-sm text-ink-800">{p.label}</td>
-                      <td className="py-3 px-3"><span className={	ext-[10px] font-mono px-1.5 py-0.5 rounded border }>{p.difficulty}</span></td>
-                      <td className="py-3 px-3 text-center"><span className={	ext-xs font-mono }>{st==="running"?"running…":st}</span></td>
+                      <td className="py-3 px-3"><span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${DIFF_CLS[p.difficulty]||"text-ink-600 bg-ink-50 border-ink-200"}`}>{p.difficulty}</span></td>
+                      <td className="py-3 px-3 text-center"><span className={`text-xs font-mono ${STATUS_CLS[st]}`}>{st==="running"?"running…":st}</span></td>
                       <td className="py-3 px-4 text-right" onClick={e=>e.stopPropagation()}>
                         <button onClick={()=>run(p.id)} disabled={st==="running"} className="btn-ghost text-xs py-1 px-2.5 disabled:opacity-40">
                           {st==="running"?"…":"run"}
@@ -104,7 +104,7 @@ export default function EvalPage() {
                       </td>
                     </tr>
                     {isExp && (
-                      <tr key={${p.id}-exp} className="border-b border-ink-100 bg-ink-50/50">
+                      <tr key={`${p.id}-exp`} className="border-b border-ink-100 bg-ink-50/50">
                         <td colSpan={5} className="px-6 py-4">
                           <div className="grid grid-cols-2 gap-4 text-xs">
                             <div>
@@ -119,7 +119,7 @@ export default function EvalPage() {
                           {p.latest_result && (
                             <div className="mt-3 pt-3 border-t border-ink-200 grid grid-cols-4 gap-3">
                               {[
-                                {k:"Latency", v:${((p.latest_result.auto_metrics.total_latency_ms)/1000).toFixed(1)}s},
+                                {k:"Latency", v:`${((p.latest_result.auto_metrics.total_latency_ms)/1000).toFixed(1)}s`},
                                 {k:"Tokens", v:p.latest_result.auto_metrics.total_tokens.toLocaleString()},
                                 {k:"Repairs", v:String(p.latest_result.auto_metrics.repair_count)},
                                 {k:"Validation", v:p.latest_result.auto_metrics.validation_passed?"passed":"failed"},

@@ -31,7 +31,7 @@ export default function HITLModal({ event, onResume }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-md mx-4 bg-white border border-ink-200 rounded-lg shadow-xl overflow-hidden">
+      <div className="w-full max-w-md mx-4 bg-ink-100 border border-ink-200 rounded-lg shadow-xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-ink-100">
           <div>
             <p className="text-sm font-semibold text-ink-900">Clarification needed</p>
@@ -44,8 +44,8 @@ export default function HITLModal({ event, onResume }: Props) {
             <div className="space-y-2">
               <p className="text-sm text-ink-700">{event.questions[0]}</p>
               {event.options.map(opt => (
-                <label key={opt} className={lex items-center gap-3 p-3 rounded border cursor-pointer }>
-                  <span className={w-3.5 h-3.5 rounded-full border-2 flex-shrink-0 } />
+                <label key={opt} className={`flex items-center gap-3 p-3 rounded border cursor-pointer ${chosen===opt?"border-accent-500 bg-accent-50":"border-ink-200 hover:border-ink-300"}`}>
+                  <span className={`w-3.5 h-3.5 rounded-full border-2 flex-shrink-0 ${chosen===opt?"border-accent-600 bg-accent-600":"border-ink-300"}`} />
                   <input type="radio" className="sr-only" value={opt} checked={chosen===opt} onChange={()=>setChosen(opt)} />
                   <span className="text-sm text-ink-700">{opt}</span>
                 </label>

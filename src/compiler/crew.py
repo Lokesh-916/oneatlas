@@ -180,8 +180,8 @@ def _outline(data: Optional[dict]) -> str:
         return "{}"
     # Top-level keys to keep per schema type, with how many items to show
     def _summarise(obj: Any, depth: int = 0) -> Any:
-        if depth >= 2:
-            # At depth 2+, only return primitive values or list length
+        if depth >= 5:
+            # At depth 5+, only return primitive values or list length
             if isinstance(obj, list):
                 return f"[{len(obj)} items]"
             if isinstance(obj, dict):
@@ -894,18 +894,9 @@ async def run_pipeline(session: PipelineSession) -> None:
                                    task_name, getattr(agent.llm, "model", "?"), _fb)
                     agent.llm = LLM(model=_fb, temperature=_primary_temp if "_primary_temp" in dir() else 0.1)
                     continue
-                # 5xx provider error -> switch to fallback model from routing config
                 is_5xx = any(code in err_str for code in ["500", "502", "503", "504"]) and "RateLimitError" not in type(e).__name__
                 if is_5xx and attempt == 0 and agent and agent.llm:
-                    _fb = _fallback_model if "_fallback_model" in dir() else model_for_stage(agent_name)[1]
-                    logger.warning("[routing] FALLBACK stage=%s primary=%s -> fallback=%s reason=5xx",
-                                   task_name, getattr(agent.llm, "model", "?"), _fb)
-                    agent.llm = LLM(model=_fb, temperature=_primary_temp if "_primary_temp" in dir() else 0.1)
-                    continue
-                # 5xx provider error -> switch to fallback model from routing config
-                is_5xx = any(code in err_str for code in ["500", "502", "503", "504"]) and "RateLimitError" not in type(e).__name__
-                if is_5xx and attempt == 0 and agent and agent.llm:
-                    _fb = _fallback_model if "_fallback_model" in dir() else model_for_stage(agent_name)[1]
+                    _fb = "openrouter/meta-llama/llama-3.3-70b-instruct"
                     logger.warning("[routing] FALLBACK stage=%s primary=%s -> fallback=%s reason=5xx",
                                    task_name, getattr(agent.llm, "model", "?"), _fb)
                     agent.llm = LLM(model=_fb, temperature=_primary_temp if "_primary_temp" in dir() else 0.1)
@@ -962,6 +953,14 @@ async def run_pipeline(session: PipelineSession) -> None:
                         if attempt < len(GROQ_KEYS):
                             continue
                         rotated = True
+                    else:
+                        # Unconditionally fallback to OpenRouter on 429 if no more keys
+                        if agent and agent.llm:
+                            _fb = "openrouter/meta-llama/llama-3.3-70b-instruct"
+                            logger.warning("[routing] FALLBACK stage=%s primary=%s -> fallback=%s reason=429_RateLimit",
+                                           task_name, getattr(agent.llm, "model", "?"), _fb)
+                            agent.llm = LLM(model=_fb, temperature=_primary_temp if "_primary_temp" in dir() else 0.1)
+                            continue
 
                     if attempt < max_retries - 1:
                         # Parse "Please try again in 1h5m21.665s." or "21.665s."

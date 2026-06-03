@@ -3,6 +3,8 @@ import HomePage from "./pages/HomePage";
 import GeneratePage from "./pages/GeneratePage";
 import ResultsPage from "./pages/ResultsPage";
 import EvalPage from "./pages/EvalPage";
+import IntegrationsPage from "./pages/IntegrationsPage";
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -11,6 +13,7 @@ export default function App() {
         <Route path="/generate" element={<GeneratePage />} />
         <Route path="/results" element={<ResultsPage />} />
         <Route path="/eval" element={<EvalPage />} />
+        <Route path="/integrations" element={<IntegrationsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

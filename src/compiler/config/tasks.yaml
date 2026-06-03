@@ -330,7 +330,7 @@ task_log_progress:
 
     Generate 3 valid Mermaid diagrams:
 
-    1) mermaid_pipeline: Flowchart using "graph LR" showing stage order with latencies.
+    1) mermaid_pipeline: Flowchart using "flowchart TD" showing stage order with latencies.
        - Edge syntax: A -->|4235ms| B   (NO trailing > after the closing pipe)
        - ✅ Correct: A -->|4235ms| B
        - ❌ Wrong:   A -->|4235ms|> B

@@ -19,14 +19,14 @@ export default function HomePage() {
     setLoading(true); setError("");
     try {
       const { session_id } = await startPipeline(prompt.trim());
-      navigate(/generate?session=);
+      navigate(`/generate?session=${session_id}`);
     } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); setLoading(false); }
   };
 
   return (
     <div className="min-h-screen bg-ink-50 flex flex-col">
       {/* Header */}
-      <header className="border-b border-ink-200 bg-white px-8 py-4 flex items-center justify-between">
+      <header className="border-b border-ink-200 bg-ink-100 px-8 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="font-mono text-base font-semibold text-ink-900">AppSpec</span>
           <span className="text-ink-300">/</span>
@@ -73,7 +73,7 @@ export default function HomePage() {
           <div className="space-y-2">
             <p className="text-xs font-mono text-ink-400 uppercase tracking-wider">Examples</p>
             {EX.map(ex => (
-              <button key={ex} onClick={() => setPrompt(ex)} className="w-full text-left text-xs text-ink-600 hover:text-ink-900 px-3 py-2 rounded border border-ink-200 hover:border-ink-400 bg-white hover:bg-ink-50 transition-all font-mono leading-relaxed">
+              <button key={ex} onClick={() => setPrompt(ex)} className="w-full text-left text-xs text-ink-600 hover:text-ink-900 px-3 py-2 rounded border border-ink-200 hover:border-ink-400 bg-ink-100 hover:bg-ink-200 transition-all font-mono leading-relaxed">
                 {ex}
               </button>
             ))}

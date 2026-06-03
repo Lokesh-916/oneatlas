@@ -171,8 +171,8 @@ export default function GeneratePage() {
       {/* Nav */}
       <nav className="flex items-center justify-between px-6 py-4 border-b border-canvas-900 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <img src="/favicon.png" className="w-6 h-6 object-contain" alt="ProtoFlow logo" />
-          <span className="font-display text-lg text-canvas-100">ProtoFlow</span>
+          <img src="/favicon.png" className="w-6 h-6 object-contain" alt="AppSpec logo" />
+          <span className="font-display text-lg text-ink-900">AppSpec</span>
           <span className="text-canvas-700 mx-1 text-sm">/</span>
           <span className="text-xs text-canvas-500">Pipeline</span>
         </div>
