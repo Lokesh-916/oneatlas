@@ -10,7 +10,8 @@ task_extract_intent:
     User Prompt: {user_prompt}
 
     Extract the following fields:
-    - app_type: the category of application (e.g. "CRM", "e-commerce", "project management")
+    - app_name: a short human-readable name for the application (e.g. Real Estate CRM, Team Task Manager)
+    - app_type: the category of application - must be one of: crm | project_management | ecommerce | hr_tool | inventory | content_platform | analytics | custom
     - features: list of feature names
     - entities: list of domain entity names
     - user_roles: list of user role names
@@ -34,7 +35,8 @@ task_extract_intent:
     Respond only with valid JSON. No prose, no markdown fences, no explanation.
   expected_output: >
     Valid IntentSchema JSON with fields:
-    app_type (string),
+    app_name (string),
+    app_type (string - enum: crm|project_management|ecommerce|hr_tool|inventory|content_platform|analytics|custom),
     features (array of strings),
     entities (array of strings),
     user_roles (array of strings),

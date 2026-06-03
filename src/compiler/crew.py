@@ -673,6 +673,12 @@ async def _run_stage(
         "latency_ms": 0,
         "output_summary": "",
     })
+    # Also emit stage_start as a distinct event type (assignment requirement)
+    await _emit(session, "stage_start", {
+        "stage": stage_name,
+        "model": model,
+        "timestamp": int(time.monotonic() * 1000),
+    })
 
     try:
         result = await coro
@@ -696,6 +702,12 @@ async def _run_stage(
             "model": model,
             "latency_ms": latency_ms,
             "output_summary": summary,
+        })
+        # Also emit stage_complete as distinct event type
+        await _emit(session, "stage_complete", {
+            "stage": stage_name,
+            "latency_ms": latency_ms,
+            "model": model,
         })
 
         logger.info(
@@ -1743,6 +1755,34 @@ async def run_pipeline(session: PipelineSession) -> None:
             session.repair_count += 1
 
             # --- Feature F: classify repair strategy and log outcome ---
+            # FIELD repair: if errors are field-type, attempt narrow re-prompt
+            _field_errors = [e for e in (session.validation_report or {}).get("errors", [])
+                             if isinstance(e, dict) and "field" in e.get("layer", "").lower() + e.get("description", "").lower()]
+            if _field_errors and attempt == 1:
+                for _fe in _field_errors[:2]:  # re-prompt up to 2 field errors in isolation
+                    _field_desc = _fe.get("description", "")
+                    _field_name = _fe.get("field", "unknown_field")
+                    logger.info("[session:%s] FIELD repair: re-prompting field=%s", session.session_id, _field_name)
+                    try:
+                        _narrow_result = await _kickoff_task(
+                            "task_repair_schemas",
+                            {
+                                "validation_report": f'{{"errors": [{json.dumps(_fe)}]}}',
+                                "all_schemas": _compact({
+                                    "db_schema": session.db_schema,
+                                    "api_schema": session.api_schema,
+                                }),
+                                "repair_attempt_number": attempt,
+                                "user_prompt": f"Fix only this field error: {_field_desc}",
+                            }
+                        )
+                        _narrow_updated = _narrow_result.get("updated_schemas", {})
+                        for _k in {"db_schema", "api_schema"} & set(_narrow_updated.keys()):
+                            if isinstance(_narrow_updated[_k], dict):
+                                setattr(session, _k, _narrow_updated[_k])
+                                logger.info("[session:%s] FIELD repair applied to %s", session.session_id, _k)
+                    except Exception as _fe_exc:
+                        logger.warning("[session:%s] FIELD narrow re-prompt failed: %s", session.session_id, _fe_exc)
             errors_before = len((session.validation_report or {}).get("errors", []))
             strategy = _classify_repair_strategy(
                 errors=(session.validation_report or {}).get("errors", []),
@@ -1932,7 +1972,7 @@ async def run_pipeline(session: PipelineSession) -> None:
         features = intent.get("features", []) if isinstance(intent, dict) else getattr(intent, "features", [])
         assumptions = intent.get("assumptions", []) if isinstance(intent, dict) else getattr(intent, "assumptions", [])
         meta = AppSpecMeta(
-            app_name=str(app_type).replace("_", " ").title(),
+            app_name=(intent.get("app_name", "") if isinstance(intent, dict) else getattr(intent, "app_name", "")) or str(app_type).replace("_", " ").title(),
             app_type=str(app_type),
             description=session.prompt[:200],
             features=features if isinstance(features, list) else [],
@@ -1982,7 +2022,15 @@ async def run_pipeline(session: PipelineSession) -> None:
                 if en.lower().rstrip("s") in pl or en.lower() in pl:
                     bound = en
                     break
-            pages.append(AppSpecPage(path=pth, title=ttl, role_required=role, bound_entity=bound))
+            # Derive layout from page path heuristics
+            layout = "list"
+            if any(kw in pth.lower() for kw in [":id", "/detail", "/view", "/edit"]):
+                layout = "detail"
+            elif any(kw in pth.lower() for kw in ["/dashboard", "/analytics", "/report", "/overview"]):
+                layout = "dashboard"
+            elif any(kw in pth.lower() for kw in ["/settings", "/profile", "/config", "/preferences"]):
+                layout = "settings"
+            pages.append(AppSpecPage(path=pth, title=ttl, role_required=role, bound_entity=bound, layout=layout))
         api = session.api_schema or {}
         eps_raw = api.get("endpoints", []) if isinstance(api, dict) else getattr(api, "endpoints", [])
         api_endpoints = []
@@ -1992,7 +2040,19 @@ async def run_pipeline(session: PipelineSession) -> None:
             ar = ep.get("auth_required", True) if isinstance(ep, dict) else getattr(ep, "auth_required", True)
             rr = ep.get("required_role") if isinstance(ep, dict) else getattr(ep, "required_role", None)
             if pth:
-                api_endpoints.append(AppSpecEndpoint(method=str(m), path=str(pth), auth_required=bool(ar), required_role=rr))
+                # Derive handler description from method + path
+                handler_desc = ep.get("description", "") if isinstance(ep, dict) else getattr(ep, "description", "")
+                if not handler_desc:
+                    handler_desc = f"{m} {pth}"
+                # Rate limit flag: POST/PUT endpoints or paths with /upload /export
+                rate_limit = any(kw in str(pth).lower() for kw in ["/upload", "/export", "/bulk", "/import"])
+                if str(m).upper() in ("POST", "PUT", "PATCH") and "admin" in str(rr or "").lower():
+                    rate_limit = True
+                api_endpoints.append(AppSpecEndpoint(
+                    method=str(m), path=str(pth), auth_required=bool(ar),
+                    required_role=rr, handler_description=handler_desc,
+                    rate_limit_flag=rate_limit
+                ))
         auth = session.auth_schema or {}
         strat = auth.get("auth_strategy", "jwt") if isinstance(auth, dict) else getattr(auth, "auth_strategy", "jwt")
         roles = auth.get("roles", []) if isinstance(auth, dict) else getattr(auth, "roles", [])
@@ -2051,6 +2111,11 @@ async def run_pipeline(session: PipelineSession) -> None:
     except Exception as e:
         logger.warning("[session:%s] FinalOutput Pydantic validation failed (non-blocking): %s", session.session_id, e)
 
+    # Emit generation_complete as alias (assignment requirement)
+    await _emit(session, "generation_complete", {
+        "total_latency_ms": total_ms,
+        "session_id": session.session_id,
+    })
     await _emit(session, "pipeline_complete", {
         "total_latency_ms": total_ms,
         "total_tokens": session.total_tokens,

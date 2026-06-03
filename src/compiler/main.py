@@ -104,8 +104,10 @@ else:
     logger.info("[startup] OPENROUTER_API_KEY loaded (length=%d) — kept as fallback.", len(_OPENROUTER_KEY))
 
 # Log the model slugs being used so mismatches are caught early
+# Model map is now driven by routing.yaml via _llm_for_agent()
+# This dict is kept for startup logging only
 _MODEL_MAP = {
-    "intent_extractor":  "groq/llama-3.3-70b-versatile",
+    "intent_extractor":  "groq/llama-3.3-70b-versatile (routing.yaml)",
     "system_architect":  "groq/llama-3.3-70b-versatile",
     "db_schema_agent":   "groq/llama-3.3-70b-versatile",
     "api_schema_agent":  "groq/llama-3.3-70b-versatile",

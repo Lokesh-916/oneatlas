@@ -19,8 +19,12 @@ from pydantic import BaseModel, Field
 class IntentSchema(BaseModel):
     """Output of the intent extraction stage."""
 
+    app_name: str = Field(
+        default="",
+        description="Application name extracted from the prompt, e.g. Real Estate CRM."
+    )
     app_type: str = Field(
-        description="Category of application, e.g. 'CRM', 'e-commerce', 'project management'."
+        description="Application type enum: crm | project_management | ecommerce | hr_tool | inventory | content_platform | analytics | custom."
     )
     features: List[str] = Field(
         default_factory=list,
@@ -729,6 +733,10 @@ class AppSpecPage(BaseModel):
     path: str = Field(description="URL path from UISchema.")
     title: str = Field(description="Page title from UISchema.")
     role_required: Optional[str] = Field(default=None, description="Role gate from UISchema.")
+    layout: str = Field(
+        default="list",
+        description="Page layout type: list | detail | dashboard | settings."
+    )
     bound_entity: Optional[str] = Field(default=None, description="Entity name matched from page path.")
 
 
@@ -738,6 +746,8 @@ class AppSpecEndpoint(BaseModel):
     path: str = Field(description="Endpoint path.")
     auth_required: bool = Field(description="Whether auth is required.")
     required_role: Optional[str] = Field(default=None, description="Role required if any.")
+    handler_description: str = Field(default="", description="What the endpoint handler does.")
+    rate_limit_flag: bool = Field(default=False, description="True if rate limiting should be applied.")
 
 
 class AppSpecAuthRules(BaseModel):

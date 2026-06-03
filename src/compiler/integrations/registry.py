@@ -8,8 +8,8 @@ Usage:
 REGISTRY is a dict[str, Integration] keyed by integration id.
 All validation of integration references resolves against this dict at runtime.
 
-Implemented (5): slack, gmail, stripe, whatsapp, webhook
-Stubbed (5):     jira, google_sheets, hubspot, notion, twilio_sms
+Implemented (6): slack, gmail, stripe, whatsapp, webhook, google_sheets
+Stubbed (4):     jira, hubspot, notion, twilio_sms
 
 is_stub=True means the interface is correct and validated, but the actual
 HTTP call is not implemented. A developer can implement the call from the metadata alone.
@@ -371,46 +371,86 @@ REGISTRY: dict[str, Integration] = {
         id="google_sheets",
         display_name="Google Sheets",
         auth_type="oauth2",
-        description="Append rows, update cells, and create sheet tabs in Google Sheets.",
-        is_stub=True,
+        description="Append rows, update cells, create sheet tabs, and batch-update Google Sheets via the Sheets API v4.",
+        is_stub=False,
         triggers=[
             TriggerDescriptor(
                 id="data_event",
                 display_name="Data Export Event",
-                entity_events=["created", "updated"],
-                description="Fires when data should be synced to a spreadsheet.",
+                entity_events=["created", "updated", "deleted"],
+                description="Fires when records change and should be synced to a spreadsheet.",
+            ),
+            TriggerDescriptor(
+                id="scheduled_export",
+                display_name="Scheduled Export",
+                entity_events=["status_changed"],
+                description="Fires on a schedule or status change to export aggregate data.",
             ),
         ],
         actions=[
             ActionDescriptor(
                 id="append_row",
                 display_name="Append Row",
-                description="Append a new row to a Google Sheet. [STUB]",
-                is_stub=True,
+                description="Append a new row to a Google Sheet using the spreadsheets.values.append API.",
+                is_stub=False,
                 input_schema=[
                     ActionInputField(name="spreadsheet_id", type="string", required=True,
-                                     description="Google Sheets document ID."),
+                                     description="Google Sheets document ID from the URL."),
                     ActionInputField(name="sheet_name", type="string", required=True,
-                                     description="Name of the tab/sheet."),
+                                     description="Name of the tab/sheet, e.g. Sheet1."),
                     ActionInputField(name="values", type="array", required=True,
-                                     description="Array of cell values for the new row."),
+                                     description="Array of cell values for the new row, e.g. [id, name, status]."),
+                    ActionInputField(name="value_input_option", type="string", required=False,
+                                     description="How values are interpreted: RAW or USER_ENTERED. Defaults to USER_ENTERED."),
                 ],
-                output_schema={"updated_range": "string", "updated_rows": "number"},
+                output_schema={"updated_range": "string", "updated_rows": "number", "spreadsheet_id": "string"},
             ),
             ActionDescriptor(
                 id="update_cell",
                 display_name="Update Cell",
-                description="Update a specific cell value. [STUB]",
-                is_stub=True,
+                description="Update a specific cell or range using spreadsheets.values.update.",
+                is_stub=False,
                 input_schema=[
                     ActionInputField(name="spreadsheet_id", type="string", required=True,
                                      description="Google Sheets document ID."),
                     ActionInputField(name="range", type="string", required=True,
-                                     description="A1 notation range, e.g. Sheet1!B2"),
-                    ActionInputField(name="value", type="string", required=True,
-                                     description="New cell value."),
+                                     description="A1 notation range, e.g. Sheet1!B2 or Sheet1!A1:C3."),
+                    ActionInputField(name="values", type="array", required=True,
+                                     description="2D array of values to write, e.g. [[val1, val2]]."),
+                    ActionInputField(name="value_input_option", type="string", required=False,
+                                     description="RAW or USER_ENTERED. Defaults to USER_ENTERED."),
                 ],
-                output_schema={"updated_range": "string"},
+                output_schema={"updated_range": "string", "updated_cells": "number"},
+            ),
+            ActionDescriptor(
+                id="create_sheet_tab",
+                display_name="Create Sheet Tab",
+                description="Add a new tab/sheet to an existing spreadsheet via batchUpdate.",
+                is_stub=False,
+                input_schema=[
+                    ActionInputField(name="spreadsheet_id", type="string", required=True,
+                                     description="Google Sheets document ID."),
+                    ActionInputField(name="title", type="string", required=True,
+                                     description="Title for the new sheet tab."),
+                    ActionInputField(name="index", type="number", required=False,
+                                     description="Position index for the new sheet (0-based). Appends at end if omitted."),
+                ],
+                output_schema={"sheet_id": "number", "title": "string"},
+            ),
+            ActionDescriptor(
+                id="batch_update_rows",
+                display_name="Batch Update Rows",
+                description="Write multiple ranges in a single API call using spreadsheets.values.batchUpdate.",
+                is_stub=False,
+                input_schema=[
+                    ActionInputField(name="spreadsheet_id", type="string", required=True,
+                                     description="Google Sheets document ID."),
+                    ActionInputField(name="data", type="array", required=True,
+                                     description="Array of {range, values} objects for batch write."),
+                    ActionInputField(name="value_input_option", type="string", required=False,
+                                     description="USER_ENTERED or RAW."),
+                ],
+                output_schema={"total_updated_cells": "number", "total_updated_rows": "number"},
             ),
         ],
     ),

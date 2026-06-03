@@ -1,0 +1,35 @@
+?? final_state.txt
+?? out.txt
+f49db3f chore: catch-all temp file gitignore patterns
+f5b686f chore: add temp file patterns to gitignore
+21d6255 chore: final gitignore update
+ff72092 chore: remove temp files
+774999c feat(G+H): POST /generate/{id}/repair, assignment_prompts.json, /eval/assignment-prompts, fix duplicate RepairRequest, update README
+5872e8e chore: remove temp patch scripts from repo
+a504494 feat(F): repair strategy classification - STRUCTURAL/FIELD/CONSISTENCY/ESCALATED, repair_log per attempt
+338db93 chore: add verify.txt to gitignore
+80f131e chore(E): update gitignore to exclude temp scripts, clean repo root
+662bfda chore: final repo cleanup
+--- 
+agents.yaml
+routing.yaml
+tasks.yaml
+json_repair_tool.py
+llm_cache.py
+mermaid_generator_tool.py
+routing.py
+schema_diff_tool.py
+__init__.py
+__pycache__
+registry.py
+__init__.py
+__pycache__
+assignment_prompts.json
+prompts.json
+recorder.py
+runner.py
+__init__.py
+__pycache__
+contracts.py
+__init__.py
+__pycache__
