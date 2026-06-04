@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
-mermaid.initialize({ startOnLoad:false, theme:"neutral", themeVariables:{ primaryColor:"#e8f0f7", primaryTextColor:"#16140f", lineColor:"#9e9a8e", edgeLabelBackground:"#f0efe9" } });
+mermaid.initialize({ startOnLoad:false, theme:"dark" });
 let _id=0;
 function clean(s:string):string {
   if(!s) return s;
