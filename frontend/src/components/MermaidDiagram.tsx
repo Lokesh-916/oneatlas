@@ -5,7 +5,9 @@ let _id=0;
 function clean(s:string):string {
   if(!s) return s;
   let r=s.replace(/\\n/g,"\n").replace(/(\|[^|]*\|)>/g,"");
-  // Strip hardcoded inline styles, class definitions, and class assignments to ensure uniform neutral theme
+  // Strip out %%{...}%% blocks completely
+  r = r.replace(/%%\{[\s\S]*?\}%%/g, "");
+  // Strip hardcoded inline styles, class definitions, and class assignments
   r = r.split("\n").filter(l => {
     const t = l.trim();
     return !(t.startsWith("style ") || t.startsWith("classDef ") || t.startsWith("class "));
