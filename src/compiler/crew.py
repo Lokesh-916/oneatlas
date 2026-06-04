@@ -49,7 +49,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # crewai imports
-from crewai import Agent, Crew, Process, Task
+from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from compiler.tools.json_repair_tool import extract_json
@@ -687,7 +687,6 @@ async def _apply_pending_modification(session: PipelineSession, current_stage: s
 async def _run_stage(
     session: PipelineSession,
     stage_name: str,
-    model: str,
     coro: Coroutine,
 ) -> Any:
     """
@@ -697,6 +696,7 @@ async def _run_stage(
       - stage_update complete/failed event
     """
     logger.info("[session:%s] Stage START: %s", session.session_id, stage_name)
+    model = model_for_stage(stage_name)[0]
     if getattr(session, 'tpm_limit_hit', False):
         logger.warning("[session:%s] Skipping stage %s due to prior TPM limit hit.", session.session_id, stage_name)
         await _emit(session, "stage_update", {
@@ -1063,7 +1063,7 @@ async def run_pipeline(session: PipelineSession) -> None:
             usage = result.token_usage
             _input_t = getattr(usage, 'prompt_tokens', 0) or (usage.get('prompt_tokens', 0) if isinstance(usage, dict) else 0)
             _output_t = getattr(usage, 'completion_tokens', 0) or (usage.get('completion_tokens', 0) if isinstance(usage, dict) else 0)
-            _used_model = session.stage_models.get(task_name, "groq/llama-3.3-70b-versatile")
+            _used_model = session.stage_models.get(task_name)
             _cost = cost_for_tokens(_used_model, _input_t, _output_t)
             session.stage_costs[task_name] = session.stage_costs.get(task_name, 0.0) + _cost
 
@@ -1155,7 +1155,7 @@ async def run_pipeline(session: PipelineSession) -> None:
 
     session.intent = await _run_stage(
         session, "intent_extraction",
-        "groq/llama-3.3-70b-versatile", _stage_intent()
+        _stage_intent()
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1180,7 +1180,7 @@ async def run_pipeline(session: PipelineSession) -> None:
 
     session.architecture = await _run_stage(
         session, "architecture_design",
-        "groq/llama-3.3-70b-versatile", _stage_architecture()
+        _stage_architecture()
     )
 
     # ── Modification checkpoint (before schema generation) ────────────────────
@@ -1257,7 +1257,8 @@ async def run_pipeline(session: PipelineSession) -> None:
     # STAGES 3-6 — Sequential Execution (formerly parallel fan-out)
     # We run these sequentially to avoid hitting Groq's 12,000 TPM rate limit
     # ─────────────────────────────────────────────────────────────────────────
-    async def _run_schema_stage(stage_name: str, task_coro, model: str) -> dict:
+    async def _run_schema_stage(stage_name: str, task_coro) -> dict:
+        model = model_for_stage(stage_name)[0]
         await _emit(session, "stage_update", {
             "stage": stage_name, "status": "running",
             "model": model, "latency_ms": 0, "output_summary": "",
@@ -1274,14 +1275,14 @@ async def run_pipeline(session: PipelineSession) -> None:
         })
         return result
 
-    db_result = await _run_schema_stage("db_schema", _stage_db, "groq/llama-3.3-70b-versatile")
+    db_result = await _run_schema_stage("db_schema", _stage_db)
     # ── Modification checkpoint (between db and api generation) ──────────────
     await _apply_pending_modification(session, "before_api_schema")
-    api_result = await _run_schema_stage("api_schema", _stage_api, "groq/llama-3.3-70b-versatile")
+    api_result = await _run_schema_stage("api_schema", _stage_api)
     # ── Modification checkpoint (between api and ui generation) ──────────────
     await _apply_pending_modification(session, "before_ui_schema")
-    ui_result = await _run_schema_stage("ui_schema", _stage_ui, "groq/llama-3.3-70b-versatile")
-    auth_result = await _run_schema_stage("auth_schema", _stage_auth, "groq/llama-3.3-70b-versatile")
+    ui_result = await _run_schema_stage("ui_schema", _stage_ui)
+    auth_result = await _run_schema_stage("auth_schema", _stage_auth)
 
     # ── Modification checkpoint (before validation) ───────────────────────────
     await _apply_pending_modification(session, "before_validation")
@@ -1465,7 +1466,7 @@ async def run_pipeline(session: PipelineSession) -> None:
     # Run workflow stubs stage (only fires if integrations were requested)
     _workflow_stubs_result = await _run_stage(
         session, "workflow_stubs",
-        "groq/llama-3.3-70b-versatile", _stage_workflow_stubs()
+        _stage_workflow_stubs()
     )
     # _run_stage returns a dict on error, list on success — handle both
     if isinstance(_workflow_stubs_result, list):
@@ -1629,7 +1630,7 @@ async def run_pipeline(session: PipelineSession) -> None:
 
     _wf_result = await _run_stage(
         session, "workflow_stubs",
-        "groq/llama-3.3-70b-versatile", _stage_workflow_stubs()
+        _stage_workflow_stubs()
     )
     session.workflow_stubs = _wf_result if isinstance(_wf_result, list) else []
 
@@ -1747,7 +1748,7 @@ async def run_pipeline(session: PipelineSession) -> None:
 
         validation = await _run_stage(
             session, "validation",
-            "groq/llama-3.3-70b-versatile", _stage_validate()
+            _stage_validate()
         )
 
         # Derive validity from errors array — LLM's is_valid flag is unreliable.
@@ -1790,7 +1791,7 @@ async def run_pipeline(session: PipelineSession) -> None:
         await _emit(session, "stage_update", {
             "stage": "validation",
             "status": "repair_triggered",
-            "model": "groq/llama-3.3-70b-versatile",
+            "model": session.stage_models.get("validation", model_for_stage("validation")[0]),
             "latency_ms": session.stage_latencies.get("validation", 0),
             "output_summary": f"{len(errors)} errors found",
             "conflicts": [e.get("description", "") for e in validation.get("conflicts", [])],
@@ -1955,7 +1956,7 @@ async def run_pipeline(session: PipelineSession) -> None:
 
         await _run_stage(
             session, "repair",
-            "groq/llama-3.3-70b-versatile", _stage_repair()
+            _stage_repair()
         )
 
         # Rebuild outline for next validation pass
@@ -1995,7 +1996,7 @@ async def run_pipeline(session: PipelineSession) -> None:
 
     await _run_stage(
         session, "runtime_validation",
-        "groq/llama-3.3-70b-versatile", _stage_runtime()
+        _stage_runtime()
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -2038,7 +2039,7 @@ async def run_pipeline(session: PipelineSession) -> None:
 
     await _run_stage(
         session, "logging",
-        "groq/llama-3.3-70b-versatile", _stage_logging()
+        _stage_logging()
     )
 
     # ─────────────────────────────────────────────────────────────────────────
