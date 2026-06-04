@@ -13,60 +13,66 @@ openrouter_equivalents:
   "groq/llama-3.3-70b-versatile": "openrouter/meta-llama/llama-3.3-70b-instruct"
   "gemini/gemini-3.1-flash-lite": "openrouter/meta-llama/llama-3.3-70b-instruct"
   "gemini/gemini-1.5-pro": "openrouter/google/gemini-1.5-pro"
+  "openrouter/deepseek/deepseek-v4-flash": "openrouter/meta-llama/llama-3.3-70b-instruct"
+  "openrouter/qwen/qwen3-next-80b-a3b-instruct:free": "openrouter/meta-llama/llama-3.3-70b-instruct"
 
 tiers:
-  fast_cheap:
+  groq_tier:
     primary: "groq/llama-3.3-70b-versatile"
     fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
-  capable:
+  gemini_tier:
     primary: "gemini/gemini-3.1-flash-lite"
     fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
+  deepseek_tier:
+    primary: "openrouter/deepseek/deepseek-v4-flash"
+    fallback: "groq/llama-3.3-70b-versatile"
+  qwen_tier:
+    primary: "openrouter/qwen/qwen3-next-80b-a3b-instruct:free"
+    fallback: "gemini/gemini-3.1-flash-lite"
 
 stages:
   intent_extraction:
-    tier: "fast_cheap"
+    tier: "groq_tier"
     temperature: 0.1
 
   architecture_design:
-    tier: "capable"
+    tier: "deepseek_tier"
     temperature: 0.2
 
   db_schema:
-    tier: "capable"
+    tier: "gemini_tier"
     temperature: 0.2
 
   api_schema:
-    tier: "capable"
+    tier: "qwen_tier"
     temperature: 0.2
 
   ui_schema:
-    tier: "capable"
+    tier: "groq_tier"
     temperature: 0.2
 
   auth_schema:
-    tier: "capable"
+    tier: "gemini_tier"
     temperature: 0.2
 
   validation:
-    tier: "fast_cheap"
+    tier: "groq_tier"
     temperature: 0.1
 
   repair:
-    # Repair dynamically routes to the failing model first.
-    # It escalates to this tier if the failing model fails again.
-    tier: "capable"
+    tier: "deepseek_tier"
     temperature: 0.2
 
   workflow_stubs:
-    tier: "capable"
+    tier: "qwen_tier"
     temperature: 0.2
 
   runtime_validation:
-    tier: "fast_cheap"
+    tier: "groq_tier"
     temperature: 0.1
 
   logging:
-    tier: "capable"
+    tier: "gemini_tier"
     temperature: 0.3
 
 cost_table:
@@ -82,3 +88,9 @@ cost_table:
   "openrouter/google/gemini-1.5-pro":
     input: 0.00000350
     output: 0.00001050
+  "openrouter/deepseek/deepseek-v4-flash":
+    input: 0.00000014
+    output: 0.00000028
+  "openrouter/qwen/qwen3-next-80b-a3b-instruct:free":
+    input: 0.0
+    output: 0.0
