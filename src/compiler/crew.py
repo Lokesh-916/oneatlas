@@ -40,7 +40,16 @@ def patched_completion(*args, **kwargs):
     return original_completion(*args, **kwargs)
 litellm.completion = patched_completion
 
-from crewai import Agent, Crew, LLM, Process, Task
+import re
+import traceback
+import asyncio
+from dotenv import load_dotenv
+
+# Load environment variables before parsing keys
+load_dotenv()
+
+# crewai imports
+from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from compiler.tools.json_repair_tool import extract_json
