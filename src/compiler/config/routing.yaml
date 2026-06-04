@@ -11,8 +11,8 @@ providers:
 
 openrouter_equivalents:
   "groq/llama-3.3-70b-versatile": "openrouter/meta-llama/llama-3.3-70b-instruct"
-  "gemini/gemini-3.1-flash-lite": "openrouter/meta-llama/llama-3.3-70b-instruct"
-  "gemini/gemini-1.5-pro": "openrouter/google/gemini-1.5-pro"
+  "google/gemini-3.1-flash-lite": "openrouter/meta-llama/llama-3.3-70b-instruct"
+  "google/gemini-1.5-pro": "openrouter/google/gemini-1.5-pro"
   "openrouter/deepseek/deepseek-v4-flash": "openrouter/meta-llama/llama-3.3-70b-instruct"
   "openrouter/qwen/qwen3-next-80b-a3b-instruct:free": "openrouter/meta-llama/llama-3.3-70b-instruct"
 
@@ -21,14 +21,14 @@ tiers:
     primary: "groq/llama-3.3-70b-versatile"
     fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
   gemini_tier:
-    primary: "gemini/gemini-3.1-flash-lite"
+    primary: "google/gemini-3.1-flash-lite"
     fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
   deepseek_tier:
     primary: "openrouter/deepseek/deepseek-v4-flash"
     fallback: "groq/llama-3.3-70b-versatile"
   qwen_tier:
     primary: "openrouter/qwen/qwen3-next-80b-a3b-instruct:free"
-    fallback: "gemini/gemini-3.1-flash-lite"
+    fallback: "google/gemini-3.1-flash-lite"
 
 stages:
   intent_extraction:
@@ -79,7 +79,7 @@ cost_table:
   "groq/llama-3.3-70b-versatile":
     input: 0.00000059
     output: 0.00000079
-  "gemini/gemini-3.1-flash-lite":
+  "google/gemini-3.1-flash-lite":
     input: 0.00000015
     output: 0.00000060
   "openrouter/meta-llama/llama-3.3-70b-instruct":
