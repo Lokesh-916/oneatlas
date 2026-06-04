@@ -75,15 +75,34 @@ _STAGE_ALIASES: dict[str, str] = {
 def model_for_stage(stage: str) -> tuple[str, str, float]:
     """
     Returns (primary_model, fallback_model, temperature) for a pipeline stage.
+    Reads from tier definitions if 'tier' is specified, otherwise uses stage-level models.
     Falls back to Groq defaults if stage not found in config.
     """
     cfg = _load()
     stage_key = _STAGE_ALIASES.get(stage, stage)
     stage_cfg = cfg.get("stages", {}).get(stage_key, {})
-    primary = stage_cfg.get("primary", _DEFAULTS["primary"])
-    fallback = stage_cfg.get("fallback", _DEFAULTS["fallback"])
+    
+    tier_name = stage_cfg.get("tier")
+    if tier_name:
+        tier_cfg = cfg.get("tiers", {}).get(tier_name, {})
+        primary = tier_cfg.get("primary", stage_cfg.get("primary", _DEFAULTS["primary"]))
+        fallback = tier_cfg.get("fallback", stage_cfg.get("fallback", _DEFAULTS["fallback"]))
+    else:
+        primary = stage_cfg.get("primary", _DEFAULTS["primary"])
+        fallback = stage_cfg.get("fallback", _DEFAULTS["fallback"])
+        
     temp = float(stage_cfg.get("temperature", _DEFAULTS["temperature"]))
     return primary, fallback, temp
+
+
+def get_openrouter_equivalent(model: str) -> str:
+    """
+    Returns the OpenRouter equivalent for a given model string, or a safe default
+    if not found in the openrouter_equivalents mapping.
+    """
+    cfg = _load()
+    equivalents = cfg.get("openrouter_equivalents", {})
+    return equivalents.get(model, _DEFAULTS["fallback"])
 
 
 def cost_for_tokens(model: str, input_tokens: int, output_tokens: int) -> float:

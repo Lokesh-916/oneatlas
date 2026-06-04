@@ -135,6 +135,27 @@ def _classify_repair_strategy(errors: list, validation_report: dict, attempt: in
 HITL_TIMEOUT_SECONDS = int(os.getenv("HITL_TIMEOUT_SECONDS", "300"))
 
 import random
+import threading
+_key_lock = threading.Lock()
+_global_groq_idx = 0
+_global_gemini_idx = 0
+
+def get_next_groq_key() -> str:
+    global _global_groq_idx
+    if not GROQ_KEYS: return ""
+    with _key_lock:
+        key = GROQ_KEYS[_global_groq_idx % len(GROQ_KEYS)]
+        _global_groq_idx += 1
+        return key
+
+def get_next_gemini_key() -> str:
+    global _global_gemini_idx
+    if not GEMINI_KEYS: return ""
+    with _key_lock:
+        key = GEMINI_KEYS[_global_gemini_idx % len(GEMINI_KEYS)]
+        _global_gemini_idx += 1
+        return key
+
 # Load all available Groq API keys from env
 GROQ_KEYS = []
 for k, v in os.environ.items():
@@ -824,8 +845,58 @@ async def run_pipeline(session: PipelineSession) -> None:
             agent_creator = getattr(crew_instance, agent_name, None)
             if callable(agent_creator):
                 agent = agent_creator()
-                logger.debug("[session:%s] Agent instantiated: %s", session.session_id, agent_name)
-                # Record primary model and get fallback from routing config
+                
+                # --- Dynamic Load Balancing & Repair Routing ---
+                is_repair = (task_name == "task_repair_schemas")
+                target_model = None
+                target_api_key = None
+                
+                if is_repair and getattr(session, 'validation_report', None):
+                    # Find which schema produced the failure
+                    report = session.validation_report
+                    worst_schema = None
+                    max_errs = -1
+                    for schema_type in ["db_schema", "api_schema", "ui_schema", "auth_schema"]:
+                        errs = len(report.get(f"{schema_type}_errors", []))
+                        if errs > max_errs:
+                            max_errs = errs
+                            worst_schema = schema_type
+                    
+                    if worst_schema:
+                        task_map = {
+                            "db_schema": "task_generate_db_schema",
+                            "api_schema": "task_generate_api_schema",
+                            "ui_schema": "task_generate_ui_schema",
+                            "auth_schema": "task_generate_auth_schema"
+                        }
+                        gen_task = task_map.get(worst_schema)
+                        if gen_task and gen_task in getattr(session, 'stage_models', {}):
+                            target_model = session.stage_models[gen_task]
+                            logger.info("[routing] Repair task targeting failed model: %s (from %s)", target_model, worst_schema)
+                
+                if agent and getattr(agent, 'llm', None):
+                    base_temp = agent.llm.temperature if hasattr(agent.llm, 'temperature') else 0.1
+                    current_model = target_model or agent.llm.model
+                    
+                    # Distribute initial request across all keys to prevent Key 1 taking 100% of the load
+                    if "gemini" in current_model.lower() and GEMINI_KEYS:
+                        target_api_key = get_next_gemini_key()
+                    elif "groq" in current_model.lower() and GROQ_KEYS:
+                        target_api_key = get_next_groq_key()
+                        
+                    if target_model or target_api_key:
+                        kwargs = {"model": current_model, "temperature": base_temp}
+                        if target_api_key:
+                            kwargs["api_key"] = target_api_key
+                            if "gemini" in current_model.lower():
+                                os.environ["GEMINI_API_KEY"] = target_api_key
+                            elif "groq" in current_model.lower():
+                                os.environ["GROQ_API_KEY"] = target_api_key
+                        
+                        # Re-instantiate agent.llm with the targeted model/key
+                        agent.llm = LLM(**kwargs)
+
+                logger.debug("[session:%s] Agent instantiated: %s (model=%s)", session.session_id, agent_name, getattr(agent.llm, "model", "?"))
                 _primary_model = agent.llm.model if agent and agent.llm else "groq/llama-3.3-70b-versatile"
                 _primary_temp = agent.llm.temperature if agent and agent.llm else 0.1
                 _, _fallback_model, _ = model_for_stage(agent_name)
@@ -939,9 +1010,10 @@ async def run_pipeline(session: PipelineSession) -> None:
                             continue
                         rotated = True
                     else:
-                        # Unconditionally fallback to OpenRouter on 429 if no more keys
+                        # Unconditionally fallback to OpenRouter equivalent on 429 if no more keys
                         if agent and agent.llm:
-                            _fb = "openrouter/meta-llama/llama-3.3-70b-instruct"
+                            from src.compiler.tools.routing import get_openrouter_equivalent
+                            _fb = get_openrouter_equivalent(_current_model)
                             logger.warning("[routing] FALLBACK stage=%s primary=%s -> fallback=%s reason=429_RateLimit",
                                            task_name, getattr(agent.llm, "model", "?"), _fb)
                             agent.llm = LLM(model=_fb, temperature=_primary_temp if "_primary_temp" in dir() else 0.1)
