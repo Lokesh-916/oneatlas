@@ -1,5 +1,7 @@
 # routing.yaml — OneAtlas AppSpec Engine Provider Routing Config
 # Maps each pipeline stage to a tier. Tier defines primary and fallback models.
+# STRATEGY: Use Groq + Gemini as primary (high rate limits), OpenRouter as fallback only.
+# Stages alternate between groq_tier and gemini_tier to spread load evenly.
 
 providers:
   groq:
@@ -13,38 +15,32 @@ openrouter_equivalents:
   "groq/llama-3.3-70b-versatile": "openrouter/meta-llama/llama-3.3-70b-instruct"
   "google/gemini-3.1-flash-lite": "openrouter/meta-llama/llama-3.3-70b-instruct"
   "google/gemini-1.5-pro": "openrouter/google/gemini-1.5-pro"
-  "openrouter/deepseek/deepseek-v4-flash": "openrouter/meta-llama/llama-3.3-70b-instruct"
-  "openrouter/qwen/qwen3-next-80b-a3b-instruct:free": "openrouter/meta-llama/llama-3.3-70b-instruct"
 
 tiers:
   groq_tier:
     primary: "groq/llama-3.3-70b-versatile"
-    fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
+    fallback: "google/gemini-3.1-flash-lite"
   gemini_tier:
     primary: "google/gemini-3.1-flash-lite"
-    fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
-  deepseek_tier:
-    primary: "openrouter/deepseek/deepseek-v4-flash"
     fallback: "groq/llama-3.3-70b-versatile"
-  qwen_tier:
-    primary: "openrouter/qwen/qwen3-next-80b-a3b-instruct:free"
-    fallback: "google/gemini-3.1-flash-lite"
 
+# Stages alternate groq ↔ gemini to spread load across both providers.
+# OpenRouter is only used as a last-resort fallback (via openrouter_equivalents).
 stages:
   intent_extraction:
     tier: "groq_tier"
     temperature: 0.1
 
   architecture_design:
-    tier: "deepseek_tier"
-    temperature: 0.2
-
-  db_schema:
     tier: "gemini_tier"
     temperature: 0.2
 
+  db_schema:
+    tier: "groq_tier"
+    temperature: 0.2
+
   api_schema:
-    tier: "qwen_tier"
+    tier: "gemini_tier"
     temperature: 0.2
 
   ui_schema:
@@ -60,15 +56,15 @@ stages:
     temperature: 0.1
 
   repair:
-    tier: "deepseek_tier"
+    tier: "gemini_tier"
     temperature: 0.2
 
   workflow_stubs:
-    tier: "qwen_tier"
+    tier: "groq_tier"
     temperature: 0.2
 
   runtime_validation:
-    tier: "groq_tier"
+    tier: "gemini_tier"
     temperature: 0.1
 
   logging:
@@ -85,12 +81,3 @@ cost_table:
   "openrouter/meta-llama/llama-3.3-70b-instruct":
     input: 0.00000060
     output: 0.00000080
-  "openrouter/google/gemini-1.5-pro":
-    input: 0.00000350
-    output: 0.00001050
-  "openrouter/deepseek/deepseek-v4-flash":
-    input: 0.00000014
-    output: 0.00000028
-  "openrouter/qwen/qwen3-next-80b-a3b-instruct:free":
-    input: 0.0
-    output: 0.0
