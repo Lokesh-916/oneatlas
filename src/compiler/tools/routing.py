@@ -30,8 +30,11 @@ def _load() -> dict:
         logger.info("[routing] Loaded routing config from %s", path)
         stages = _config.get("stages", {})
         for stage, cfg in stages.items():
-            logger.info("[routing]   %-25s primary=%-45s fallback=%s",
-                        stage, cfg.get("primary", "?"), cfg.get("fallback", "?"))
+            tier_name = cfg.get("tier")
+            tier_cfg = _config.get("tiers", {}).get(tier_name, {}) if tier_name else {}
+            p = tier_cfg.get("primary", cfg.get("primary", "?"))
+            f = tier_cfg.get("fallback", cfg.get("fallback", "?"))
+            logger.info("[routing]   %-25s primary=%-45s fallback=%s", stage, p, f)
     except Exception as e:
         logger.error("[routing] Failed to load routing.yaml: %s — using Groq defaults.", e)
         _config = {}
