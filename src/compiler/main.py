@@ -103,24 +103,18 @@ if not _OPENROUTER_KEY or _OPENROUTER_KEY == "your_openrouter_api_key_here":
 else:
     logger.info("[startup] OPENROUTER_API_KEY loaded (length=%d) — kept as fallback.", len(_OPENROUTER_KEY))
 
+from src.compiler.tools.routing import model_for_stage
+
 # Log the model slugs being used so mismatches are caught early
-# Model map is now driven by routing.yaml via _llm_for_agent()
-# This dict is kept for startup logging only
-_MODEL_MAP = {
-    "intent_extractor":  "groq/llama-3.3-70b-versatile (routing.yaml)",
-    "system_architect":  "groq/llama-3.3-70b-versatile",
-    "db_schema_agent":   "groq/llama-3.3-70b-versatile",
-    "api_schema_agent":  "groq/llama-3.3-70b-versatile",
-    "ui_schema_agent":   "groq/llama-3.3-70b-versatile",
-    "auth_agent":        "groq/llama-3.3-70b-versatile",
-    "validator_agent":   "groq/llama-3.3-70b-versatile",
-    "repair_agent":      "groq/llama-3.3-70b-versatile",
-    "runtime_validator": "groq/llama-3.3-70b-versatile",
-    "progress_logger":   "groq/llama-3.3-70b-versatile",
-}
+# Model map is now driven by routing.yaml via model_for_stage()
 logger.info("[startup] Agent model map:")
-for agent_name, model in _MODEL_MAP.items():
-    logger.info("  %-22s -> %s", agent_name, model)
+for agent_name in [
+    "intent_extractor", "system_architect", "db_schema_agent", "api_schema_agent",
+    "ui_schema_agent", "auth_agent", "validator_agent", "repair_agent",
+    "runtime_validator", "progress_logger"
+]:
+    primary, fallback, _ = model_for_stage(agent_name)
+    logger.info("  %-22s -> %s (fallback: %s)", agent_name, primary, fallback)
 
 # ── Session store ─────────────────────────────────────────────────────────────
 from compiler.crew import PipelineSession, run_pipeline

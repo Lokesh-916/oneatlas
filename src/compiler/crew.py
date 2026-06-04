@@ -876,7 +876,7 @@ async def run_pipeline(session: PipelineSession) -> None:
                 
                 if agent and getattr(agent, 'llm', None):
                     base_temp = agent.llm.temperature if hasattr(agent.llm, 'temperature') else 0.1
-                    current_model = target_model or agent.llm.model
+                    current_model = target_model or model_for_stage(agent_name)[0]
                     
                     # Distribute initial request across all keys to prevent Key 1 taking 100% of the load
                     if "gemini" in current_model.lower() and GEMINI_KEYS:
@@ -897,9 +897,8 @@ async def run_pipeline(session: PipelineSession) -> None:
                         agent.llm = LLM(**kwargs)
 
                 logger.debug("[session:%s] Agent instantiated: %s (model=%s)", session.session_id, agent_name, getattr(agent.llm, "model", "?"))
-                _primary_model = agent.llm.model if agent and agent.llm else "groq/llama-3.3-70b-versatile"
-                _primary_temp = agent.llm.temperature if agent and agent.llm else 0.1
-                _, _fallback_model, _ = model_for_stage(agent_name)
+                _primary_model, _fallback_model, _primary_temp = model_for_stage(agent_name)
+                _active_model = _primary_model
                 logger.debug("[routing] stage=%s primary=%s fallback=%s", task_name, _primary_model, _fallback_model)
             else:
                 logger.warning(
@@ -950,12 +949,12 @@ async def run_pipeline(session: PipelineSession) -> None:
                                    task_name, getattr(agent.llm, "model", "?"), _fb)
                     agent.llm = LLM(model=_fb, temperature=_primary_temp if "_primary_temp" in dir() else 0.1)
                     continue
-                is_5xx = any(code in err_str for code in ["500", "502", "503", "504"]) and "RateLimitError" not in type(e).__name__
                 if is_5xx and attempt == 0 and agent and agent.llm:
-                    _fb = "openrouter/meta-llama/llama-3.3-70b-instruct"
+                    _fb = _fallback_model if "_fallback_model" in dir() else model_for_stage(agent_name)[1]
                     logger.warning("[routing] FALLBACK stage=%s primary=%s -> fallback=%s reason=5xx",
                                    task_name, getattr(agent.llm, "model", "?"), _fb)
                     agent.llm = LLM(model=_fb, temperature=_primary_temp if "_primary_temp" in dir() else 0.1)
+                    _active_model = _fb
                     continue
                 if "RateLimitError" in type(e).__name__ or "rate_limit" in err_str.lower() or "rate limit reached" in err_str.lower():
                     if "Request too large" in err_str and "Limit" in err_str and "Requested" in err_str:
@@ -967,6 +966,7 @@ async def run_pipeline(session: PipelineSession) -> None:
                                 session.session_id, agent.llm.model
                             )
                             agent.llm = LLM(model="groq/llama-3.1-8b-instant", temperature=0.1)
+                            _active_model = "groq/llama-3.1-8b-instant"
                             continue  # Try immediately with fallback model
                         else:
                             raise ValueError(f"Request size exceeds limit even for fallback model: {err_str}")
@@ -974,7 +974,7 @@ async def run_pipeline(session: PipelineSession) -> None:
                     # If not a request size limit, it's a TPD limit or standard TPM timeout.
                     # Rotate API key if we have multiple keys available.
                     rotated = False
-                    _current_model = getattr(getattr(agent, "llm", None), "model", "") if agent else ""
+                    _current_model = _active_model
                     _is_gemini_model = "gemini" in _current_model.lower()
 
                     if _is_gemini_model and len(GEMINI_KEYS) > 1:
