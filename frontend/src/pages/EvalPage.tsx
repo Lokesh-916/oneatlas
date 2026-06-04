@@ -396,7 +396,7 @@ export default function EvalPage() {
                 <h3 className="text-xs font-mono uppercase tracking-wider mb-4" style={{ color: TEXT_DIMMER }}>Prompt Categories</h3>
                 <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
-                    <Pie data={categoryData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value" label={({ name, value }: { name: string; value: number }) => `${name} (${value})`} labelLine={{ stroke: TEXT_DIMMER }}>
+                    <Pie data={categoryData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value" label={({ name, value }: any) => `${name} (${value})`} labelLine={{ stroke: TEXT_DIMMER }}>
                       {categoryData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
                     </Pie>
                     <Legend iconType="circle" wrapperStyle={{ fontSize: 11, color: TEXT_DIM }} />
