@@ -2,7 +2,7 @@ import StageCard from "./StageCard";
 import type { StageStatus } from "../api/types";
 import { STAGE_ORDER, STAGE_META } from "../api/types";
 
-export interface StageState { status: StageStatus; latencyMs?: number; tokens?: number; confidence?: number; outputSummary?: string; assumptions?: string[]; conflicts?: string[]; repaired?: boolean; }
+export interface StageState { status: StageStatus; model?: string; latencyMs?: number; tokens?: number; confidence?: number; outputSummary?: string; assumptions?: string[]; conflicts?: string[]; repaired?: boolean; }
 interface Props { stages: Record<string, StageState>; onViewResults?: () => void; complete?: boolean; }
 
 export default function PipelineProgress({ stages, onViewResults, complete }: Props) {
@@ -20,7 +20,7 @@ export default function PipelineProgress({ stages, onViewResults, complete }: Pr
         {STAGE_ORDER.map(k => {
           const m = STAGE_META[k];
           const s = stages[k] ?? { status: "pending" as StageStatus };
-          return <StageCard key={k} label={m.label} model={m.model} status={s.status} latencyMs={s.latencyMs} outputSummary={s.outputSummary} assumptions={s.assumptions} conflicts={s.conflicts} repaired={s.repaired} />;
+          return <StageCard key={k} label={m.label} model={s.model || m.model} status={s.status} latencyMs={s.latencyMs} outputSummary={s.outputSummary} assumptions={s.assumptions} conflicts={s.conflicts} repaired={s.repaired} />;
         })}
       </div>
       {complete && onViewResults && (

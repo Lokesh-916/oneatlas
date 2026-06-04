@@ -5,7 +5,11 @@ let _id=0;
 function clean(s:string):string {
   if(!s) return s;
   let r=s.replace(/\\n/g,"\n").replace(/(\|[^|]*\|)>/g,"");
-  if(r.includes("erDiagram")||r.includes("sequenceDiagram")) r=r.split("\n").filter(l=>{const t=l.trim();return !(t.startsWith("style ")&&(t.includes("fill:")||t.includes("stroke:")));}).join("\n");
+  // Strip hardcoded inline styles, class definitions, and class assignments to ensure uniform neutral theme
+  r = r.split("\n").filter(l => {
+    const t = l.trim();
+    return !(t.startsWith("style ") || t.startsWith("classDef ") || t.startsWith("class "));
+  }).join("\n");
   return r;
 }
 interface Props { title:string; source:string; }

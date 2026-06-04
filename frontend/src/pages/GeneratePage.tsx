@@ -73,6 +73,7 @@ export default function GeneratePage() {
         ...prev,
         [event.stage]: {
           status: event.status as StageStatus,
+          model: event.model,
           latencyMs: event.latency_ms,
           tokens: event.tokens_used,
           confidence: event.confidence,
