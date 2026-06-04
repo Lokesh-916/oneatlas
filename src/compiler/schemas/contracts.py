@@ -63,6 +63,10 @@ class IntentSchema(BaseModel):
         default_factory=list,
         description="Answers received from the user during HITL clarification.",
     )
+    hitl_required: Optional[Dict[str, List[str]]] = Field(
+        default=None,
+        description="An object containing a 'questions' array of strings for any clarifying questions you need to ask the user.",
+    )
 
 
 # ---------------------------------------------------------------------------

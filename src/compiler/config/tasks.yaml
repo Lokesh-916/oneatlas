@@ -45,7 +45,8 @@ task_extract_intent:
     analytics_requirements (string or null),
     confidence (float 0.0-1.0),
     assumptions (array of strings),
-    clarifications_received (array of strings).
+    clarifications_received (array of strings),
+    hitl_required (object containing a 'questions' array of strings).
   agent: intent_extractor
   async_execution: false
 
