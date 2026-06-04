@@ -818,43 +818,33 @@ async def run_pipeline(session: PipelineSession) -> None:
         # Run in a thread pool to avoid blocking the event loop
         loop = asyncio.get_running_loop()
         
+        # Instantiate agent via the @agent method on the crew class ONCE
+        agent = None
+        if agent_name and isinstance(agent_name, str):
+            agent_creator = getattr(crew_instance, agent_name, None)
+            if callable(agent_creator):
+                agent = agent_creator()
+                logger.debug("[session:%s] Agent instantiated: %s", session.session_id, agent_name)
+                # Record primary model and get fallback from routing config
+                _primary_model = agent.llm.model if agent and agent.llm else "groq/llama-3.3-70b-versatile"
+                _primary_temp = agent.llm.temperature if agent and agent.llm else 0.1
+                _, _fallback_model, _ = model_for_stage(agent_name)
+                logger.debug("[routing] stage=%s primary=%s fallback=%s", task_name, _primary_model, _fallback_model)
+            else:
+                logger.warning(
+                    "[session:%s] No @agent method found for name=%r on ProtoFlowCrew",
+                    session.session_id, agent_name,
+                )
+        else:
+            logger.warning(
+                "[session:%s] agent_name is not a string: %r (type=%s). "
+                "Check tasks.yaml for task '%s'.",
+                session.session_id, agent_name, type(agent_name).__name__, task_name,
+            )
+
         max_retries = 5
         result = None
         for attempt in range(max_retries):
-            # Instantiate agent via the @agent method on the crew class
-            agent = None
-            if agent_name and isinstance(agent_name, str):
-                agent_creator = getattr(crew_instance, agent_name, None)
-                if callable(agent_creator):
-                    agent = agent_creator()
-                    logger.debug("[session:%s] Agent instantiated: %s", session.session_id, agent_name)
-                    # Record primary model and get fallback from routing config
-                    _primary_model = agent.llm.model if agent and agent.llm else "groq/llama-3.3-70b-versatile"
-                    _primary_temp = agent.llm.temperature if agent and agent.llm else 0.1
-                    _, _fallback_model, _ = model_for_stage(agent_name)
-                    logger.debug("[routing] stage=%s primary=%s fallback=%s", task_name, _primary_model, _fallback_model)
-                    # Record primary model and get fallback from routing config
-                    _primary_model = agent.llm.model if agent and agent.llm else "groq/llama-3.3-70b-versatile"
-                    _primary_temp = agent.llm.temperature if agent and agent.llm else 0.1
-                    _, _fallback_model, _ = model_for_stage(agent_name)
-                    logger.debug("[routing] stage=%s primary=%s fallback=%s", task_name, _primary_model, _fallback_model)
-                    # Record primary model and get fallback from routing config
-                    _primary_model = agent.llm.model if agent and agent.llm else "groq/llama-3.3-70b-versatile"
-                    _primary_temp = agent.llm.temperature if agent and agent.llm else 0.1
-                    _, _fallback_model, _ = model_for_stage(agent_name)
-                    logger.debug("[routing] stage=%s primary=%s fallback=%s", task_name, _primary_model, _fallback_model)
-                else:
-                    logger.warning(
-                        "[session:%s] No @agent method found for name=%r on ProtoFlowCrew",
-                        session.session_id, agent_name,
-                    )
-            else:
-                logger.warning(
-                    "[session:%s] agent_name is not a string: %r (type=%s). "
-                    "Check tasks.yaml for task '%s'.",
-                    session.session_id, agent_name, type(agent_name).__name__, task_name,
-                )
-
             # Instantiate task via the @task method
             task_creator = getattr(crew_instance, task_name, None)
             if not callable(task_creator):
@@ -864,20 +854,6 @@ async def run_pipeline(session: PipelineSession) -> None:
             # Assign agent to task
             if agent:
                 task_obj.agent = agent
-
-            # Apply any previously rotated API key from attempt > 0
-            if attempt > 0 and len(GROQ_KEYS) > 1:
-                # We rotate keys below when catching the exception. For attempt > 0, 
-                # we want to ensure the agent uses a deterministic new key from the pool.
-                new_key = GROQ_KEYS[attempt % len(GROQ_KEYS)]
-                os.environ["GROQ_API_KEY"] = new_key  # Force LiteLLM to see it
-                
-                if agent and agent.llm:
-                    temp = agent.llm.temperature if hasattr(agent.llm, 'temperature') else 0.1
-                    model_name = agent.llm.model
-                    if not model_name.startswith("groq/"):
-                        model_name = f"groq/{model_name}"
-                    agent.llm = LLM(model=model_name, temperature=temp, api_key=new_key)
 
             temp_crew = Crew(
                 agents=[agent] if agent else [],

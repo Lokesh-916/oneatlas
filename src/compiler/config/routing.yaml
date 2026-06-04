@@ -24,17 +24,17 @@ stages:
     temperature: 0.2
 
   db_schema:
-    primary: "gemini/gemini-3.1-flash-lite"
+    primary: "gemini/gemini-1.5-flash"
     fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
     temperature: 0.2
 
   api_schema:
     primary: "groq/llama-3.3-70b-versatile"
-    fallback: "gemini/gemini-3.1-flash-lite"
+    fallback: "gemini/gemini-1.5-flash"
     temperature: 0.2
 
   ui_schema:
-    primary: "gemini/gemini-3.1-flash-lite"
+    primary: "gemini/gemini-1.5-flash"
     fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
     temperature: 0.2
 
@@ -50,11 +50,11 @@ stages:
 
   repair:
     primary: "openrouter/meta-llama/llama-3.3-70b-instruct"
-    fallback: "gemini/gemini-3.1-flash-lite"
+    fallback: "gemini/gemini-1.5-flash"
     temperature: 0.2
 
   workflow_stubs:
-    primary: "gemini/gemini-3.1-flash-lite"
+    primary: "gemini/gemini-1.5-flash"
     fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
     temperature: 0.2
 
@@ -64,7 +64,7 @@ stages:
     temperature: 0.1
 
   logging:
-    primary: "gemini/gemini-3.1-flash-lite"
+    primary: "gemini/gemini-1.5-flash"
     fallback: "openrouter/meta-llama/llama-3.3-70b-instruct"
     temperature: 0.3
 
@@ -75,7 +75,7 @@ cost_table:
   "groq/llama-3.3-70b-versatile":
     input: 0.00000059
     output: 0.00000079
-  "gemini/gemini-3.1-flash-lite":
+  "gemini/gemini-1.5-flash":
     input: 0.00000015
     output: 0.00000060
   "gemini/gemini-1.5-pro":
