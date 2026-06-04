@@ -908,7 +908,7 @@ async def run_pipeline(session: PipelineSession) -> None:
 
                     if _is_gemini_model and len(GEMINI_KEYS) > 1:
                         # Rotate Gemini API key
-                        new_gemini_key = random.choice(GEMINI_KEYS)
+                        new_gemini_key = GEMINI_KEYS[attempt % len(GEMINI_KEYS)]
                         logger.warning(
                             "[session:%s] Rate limit hit on Gemini for %s. Rotating GEMINI_API_KEY...",
                             session.session_id, task_name
@@ -921,7 +921,7 @@ async def run_pipeline(session: PipelineSession) -> None:
                             continue
                         rotated = True
                     elif not _is_gemini_model and len(GROQ_KEYS) > 1:
-                        new_key = random.choice(GROQ_KEYS)
+                        new_key = GROQ_KEYS[attempt % len(GROQ_KEYS)]
                         logger.warning(
                             "[session:%s] Rate limit / TPD hit for %s. Rotating to another GROQ_API_KEY...",
                             session.session_id, task_name
